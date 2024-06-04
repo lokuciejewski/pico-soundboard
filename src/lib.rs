@@ -1,6 +1,7 @@
 #![no_std]
 
-use embedded_hal_1::{i2c::I2c, spi::SpiBus};
+use embedded_hal_1::spi::SpiBus;
+use embedded_hal_async::i2c::I2c;
 
 pub struct RGBLeds<SPI> {
     spi: SPI,
@@ -15,7 +16,7 @@ where
 {
     pub fn new(spi: SPI) -> Self {
         Self {
-            spi: spi,
+            spi,
             _start_frame: [0; 4],
             leds: [RGBLed::new(); 16],
             _end_frame: [0x0; 4],
@@ -125,10 +126,13 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
         button_idx: u8,
         callback: fn(&Button<SPI>, &mut RGBLeds<SPI>) -> (),
     ) {
-        self.buttons
+        if let Some(b) = self
+            .buttons
             .iter_mut()
             .find(|b| b.rgb_led_index == button_idx)
-            .and_then(|b| Some(b.callback_pressed = callback));
+        {
+            b.callback_pressed = callback;
+        };
     }
 
     pub fn add_callback_released(
@@ -136,18 +140,21 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
         button_idx: u8,
         callback: fn(&Button<SPI>, &mut RGBLeds<SPI>) -> (),
     ) {
-        self.buttons
+        if let Some(b) = self
+            .buttons
             .iter_mut()
             .find(|b| b.rgb_led_index == button_idx)
-            .and_then(|b| Some(b.callback_released = callback));
+        {
+            b.callback_released = callback;
+        };
     }
 
     // Return 6 first pressed keys (max supported by `usbd_hid`'s `KeyboardReport`)
-    pub fn update_status(&mut self) -> Result<[u8; 6], &str> {
+    pub async fn update_status(&mut self) -> Result<[u8; 6], &str> {
         let mut i2c_read_buffer = [0u8; 2];
         let temp = [1];
-        self.i2c.write(0x20, &temp).unwrap();
-        self.i2c.read(0x20, &mut i2c_read_buffer).unwrap();
+        self.i2c.write(0x20, &temp).await.unwrap();
+        self.i2c.read(0x20, &mut i2c_read_buffer).await.unwrap();
         let states = !((i2c_read_buffer[0] as u16) | ((i2c_read_buffer[1] as u16) << 8));
 
         let mut pressed_buffer = [0u8; 6];
@@ -174,6 +181,7 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                     } else {
                         // Was not pressed and is still not pressed now, do nothing
                     }
+                    // Collect only 6 buttons at once since there is no NKR
                     if counter == 6 {
                         return Ok(pressed_buffer);
                     }

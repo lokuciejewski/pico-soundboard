@@ -7,9 +7,9 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_rp::gpio::{Level, Output};
-use embassy_rp::peripherals::USB;
+use embassy_rp::peripherals::{I2C0, USB};
 use embassy_rp::spi::{self, Phase, Polarity, Spi};
-use embassy_rp::usb::{Driver, InterruptHandler};
+use embassy_rp::usb::Driver;
 use embassy_rp::{bind_interrupts, i2c};
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
@@ -19,7 +19,8 @@ use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use {defmt_rtt as _, panic_probe as _};
 
 bind_interrupts!(struct Irqs {
-    USBCTRL_IRQ => InterruptHandler<USB>;
+    USBCTRL_IRQ => embassy_rp::usb::InterruptHandler<USB>;
+    I2C0_IRQ => i2c::InterruptHandler<I2C0>;
 });
 
 #[embassy_executor::main]
@@ -80,10 +81,10 @@ async fn main(_spawner: Spawner) {
     let sda = p.PIN_4;
     let scl = p.PIN_5;
 
-    info!("set up i2c ");
-    let i2c = i2c::I2c::new_blocking(p.I2C0, scl, sda, i2c::Config::default());
+    info!("I2C setup...");
+    let i2c = i2c::I2c::new_async(p.I2C0, scl, sda, Irqs, i2c::Config::default());
 
-    info!("set up spi ");
+    info!("SPI setup...");
     let miso = p.PIN_16;
     let mosi = p.PIN_19;
     let clk = p.PIN_18;
@@ -113,11 +114,10 @@ async fn main(_spawner: Spawner) {
         });
     }
 
-    // Do stuff with the class!
     let in_fut = async {
         loop {
             let report = KeyboardReport {
-                keycodes: board.update_status().unwrap(),
+                keycodes: board.update_status().await.unwrap(),
                 leds: 0,
                 modifier: 0,
                 reserved: 0,
@@ -135,7 +135,6 @@ async fn main(_spawner: Spawner) {
     };
 
     // Run everything concurrently.
-    // If we had made everything `'static` above instead, we could do this using separate tasks instead.
     join(usb_fut, join(in_fut, out_fut)).await;
 }
 
