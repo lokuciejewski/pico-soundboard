@@ -172,11 +172,44 @@ impl LedStateQueue {
 // pub type Transition = fn(current_ticks: usize) -> TransitionResult;
 pub type Transition = Box<dyn Fn(usize) -> TransitionResult>;
 
-#[macro_export]
-macro_rules! solid {
-    ($brightness:tt, $colour:tt ) => {
-        |_: usize| TransitionResult::InProgress(LedState::new($brightness, $colour))
-    };
+pub fn solid(brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
+    if duration_ticks != 0 {
+        Box::new(move |counter: usize| {
+            if counter < duration_ticks {
+                TransitionResult::InProgress(LedState::new(brightness, &colour))
+            } else {
+                TransitionResult::Finished
+            }
+        })
+    } else {
+        Box::new(move |_: usize| TransitionResult::InProgress(LedState::new(brightness, &colour)))
+    }
+}
+
+pub fn fade_out(initial_brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
+    Box::new(move |counter: usize| {
+        if counter < duration_ticks {
+            TransitionResult::InProgress(LedState::new(
+                initial_brightness - ((counter / 32) as u8), // since there are 32 brightness levels
+                &colour,
+            ))
+        } else {
+            TransitionResult::Finished
+        }
+    })
+}
+
+pub fn fade_in(final_brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
+    Box::new(move |counter: usize| {
+        if counter < duration_ticks {
+            TransitionResult::InProgress(LedState::new(
+                final_brightness.max((counter / 32) as u8),
+                &colour,
+            ))
+        } else {
+            TransitionResult::Finished
+        }
+    })
 }
 
 pub enum TransitionResult {
@@ -184,8 +217,7 @@ pub enum TransitionResult {
     Finished,
 }
 
-#[derive(Clone, Copy)]
-#[derive(Default)]
+#[derive(Clone, Copy, Default)]
 pub struct LedState {
     pub brightness: u8,
     pub b: u8,
@@ -196,12 +228,10 @@ pub struct LedState {
 impl LedState {
     pub fn new(brightness: u8, colour: &Colour) -> Self {
         Self {
-            brightness,
+            brightness: brightness | 0b11100000,
             b: colour.blue,
             g: colour.green,
             r: colour.red,
         }
     }
 }
-
-
