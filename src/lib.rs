@@ -1,5 +1,6 @@
 #![no_std]
 
+use rand::RngCore;
 use rgbleds::RGBLeds;
 
 pub mod board;
@@ -120,5 +121,13 @@ impl Colour {
 
     pub fn rgb(red: u8, green: u8, blue: u8) -> Colour {
         Colour { red, green, blue }
+    }
+
+    pub fn random(rng: &mut dyn RngCore) -> Self {
+        Colour {
+            red: rng.next_u32() as u8,
+            green: rng.next_u32() as u8,
+            blue: rng.next_u32() as u8,
+        }
     }
 }

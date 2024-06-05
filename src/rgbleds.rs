@@ -190,7 +190,8 @@ pub fn fade_out(initial_brightness: u8, colour: Colour, duration_ticks: usize) -
     Box::new(move |counter: usize| {
         if counter < duration_ticks {
             TransitionResult::InProgress(LedState::new(
-                initial_brightness - ((counter / 32) as u8), // since there are 32 brightness levels
+                initial_brightness
+                    - (counter * (initial_brightness & 0b00011111) as usize / duration_ticks) as u8,
                 &colour,
             ))
         } else {
@@ -199,11 +200,11 @@ pub fn fade_out(initial_brightness: u8, colour: Colour, duration_ticks: usize) -
     })
 }
 
-pub fn fade_in(final_brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
+pub fn fade_in(target_brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
     Box::new(move |counter: usize| {
         if counter < duration_ticks {
             TransitionResult::InProgress(LedState::new(
-                final_brightness.max((counter / 32) as u8),
+                (counter * (target_brightness & 0b00011111) as usize / duration_ticks) as u8,
                 &colour,
             ))
         } else {

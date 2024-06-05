@@ -23,6 +23,8 @@ use embedded_alloc::Heap;
 use pico_soundboard::board::Board;
 use pico_soundboard::rgbleds::{fade_in, fade_out, solid};
 use pico_soundboard::Colour;
+use rand::rngs::SmallRng;
+use rand::{RngCore, SeedableRng};
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use {defmt_rtt as _, panic_probe as _};
 
@@ -119,65 +121,30 @@ async fn main(_spawner: Spawner) {
 
     // RefCell needed for mutable access
     let board: Mutex<ThreadModeRawMutex, _> = Mutex::new(RefCell::new(Board::new(i2c, spi).await));
+    let mut small_rng = SmallRng::seed_from_u64(2137);
 
     {
         let _board = board.lock().await;
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(0, solid(0xff, Colour::rgb(0x10, 0x50, 0x10), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(5, solid(0xff, Colour::rgb(0x50, 0x00, 0x00), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(5, solid(0xff, Colour::rgb(0x00, 0x00, 0x50), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(5, solid(0xff, Colour::rgb(0x00, 0x50, 0x00), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(10, solid(0b11110000, Colour::rgb(0x80, 0x80, 0x80), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(10, solid(0b11101000, Colour::rgb(0x80, 0x80, 0x80), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(10, solid(0b11100100, Colour::rgb(0x80, 0x80, 0x80), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(10, solid(0b11100010, Colour::rgb(0x80, 0x80, 0x80), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(10, solid(0b11100001, Colour::rgb(0x80, 0x80, 0x80), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(10, solid(0b11100000, Colour::rgb(0x80, 0x80, 0x80), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(15, fade_out(0xff, Colour::rgb(0x30, 0x0, 0x50), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(15, solid(0x00, Colour::rgb(0x30, 0x0, 0x50), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(15, fade_in(0x00, Colour::rgb(0x30, 0x0, 0x50), 1000));
-        _board
-            .borrow_mut()
-            .rgb_leds
-            .add_state(15, solid(0xff, Colour::rgb(0x30, 0x0, 0x50), 1000));
+        for i in 0..16 {
+            let timeout = small_rng.next_u32() as u16 as usize / 10;
+            let colour = Colour::random(&mut small_rng);
+            _board
+                .borrow_mut()
+                .rgb_leds
+                .add_state(i, fade_out(0b11110000, colour.clone(), 500));
+            _board
+                .borrow_mut()
+                .rgb_leds
+                .add_state(i, solid(0x00, colour.clone(), timeout));
+            _board
+                .borrow_mut()
+                .rgb_leds
+                .add_state(i, fade_in(0b11110000, colour.clone(), 500));
+            _board
+                .borrow_mut()
+                .rgb_leds
+                .add_state(i, solid(0b11110000, colour, timeout));
+        }
     }
 
     let in_fut = async {
