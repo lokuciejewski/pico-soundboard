@@ -1,22 +1,34 @@
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, Ordering};
+extern crate alloc;
 
 use defmt::*;
 use embassy_executor::Spawner;
-use embassy_futures::join::join;
+use embassy_futures::join::{join, join3};
 use embassy_rp::gpio::{Level, Output};
 use embassy_rp::peripherals::{I2C0, USB};
 use embassy_rp::spi::{self, Phase, Polarity, Spi};
 use embassy_rp::usb::Driver;
 use embassy_rp::{bind_interrupts, i2c};
+use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use embassy_sync::mutex::Mutex;
+use embassy_time::{Duration, Ticker};
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler, State};
 use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder, Config, Handler};
-use pico_soundboard::{Board, Colour};
+use embedded_alloc::Heap;
+use pico_soundboard::board::Board;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 use {defmt_rtt as _, panic_probe as _};
+
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
+use core::mem::MaybeUninit;
+const HEAP_SIZE: usize = 1024;
+static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => embassy_rp::usb::InterruptHandler<USB>;
@@ -25,6 +37,9 @@ bind_interrupts!(struct Irqs {
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
+    // Init heap
+    unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
+
     let p = embassy_rp::init(Default::default());
     // Create the driver, from the HAL.
     let driver = Driver::new(p.USB, Irqs);
@@ -98,26 +113,25 @@ async fn main(_spawner: Spawner) {
     config.phase = Phase::CaptureOnFirstTransition;
     config.polarity = Polarity::IdleLow;
 
-    let spi = Spi::new_blocking(p.SPI0, clk, mosi, miso, config);
+    let spi = Spi::new(p.SPI0, clk, mosi, miso, p.DMA_CH0, p.DMA_CH1, config);
 
-    let mut board = Board::new(i2c, spi);
-
-    for i in 0..16 {
-        board.add_callback_pressed(i, |button, leds| {
-            leds.set_idx(button.rgb_led_index, &Colour::rgb(0x50, 0x0, 0xff));
-            leds.refresh();
-        });
-
-        board.add_callback_released(i, |button, leds| {
-            leds.set_idx(button.rgb_led_index, &Colour::rgb(0, 0, 0));
-            leds.refresh();
-        });
-    }
+    // RefCell needed for mutable access
+    let board: Mutex<ThreadModeRawMutex, _> = Mutex::new(RefCell::new(Board::new(i2c, spi).await));
 
     let in_fut = async {
         loop {
+            let keycodes: [u8; 6];
+            {
+                keycodes = board
+                    .lock()
+                    .await
+                    .borrow_mut()
+                    .update_status()
+                    .await
+                    .unwrap();
+            }
             let report = KeyboardReport {
-                keycodes: board.update_status().await.unwrap(),
+                keycodes,
                 leds: 0,
                 modifier: 0,
                 reserved: 0,
@@ -134,8 +148,19 @@ async fn main(_spawner: Spawner) {
         reader.run(false, &mut request_handler).await;
     };
 
+    // This is needed so that led refresh rate is independent of USB poll rate
+    let rgb_fut = async {
+        let mut ticker = Ticker::every(Duration::from_millis(1));
+        loop {
+            {
+                board.lock().await.borrow_mut().rgb_leds.refresh().await;
+            }
+            ticker.next().await;
+        }
+    };
+
     // Run everything concurrently.
-    join(usb_fut, join(in_fut, out_fut)).await;
+    join3(usb_fut, rgb_fut, join(in_fut, out_fut)).await;
 }
 
 struct MyRequestHandler {}
