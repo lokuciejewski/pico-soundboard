@@ -21,7 +21,7 @@ use embassy_usb::control::OutResponse;
 use embassy_usb::{Builder, Config, Handler};
 use embedded_alloc::Heap;
 use pico_soundboard::board::Board;
-use pico_soundboard::rgbleds::{fade_in, fade_out, solid};
+use pico_soundboard::rgbleds::{fade_in, fade_out, solid, Transition};
 use pico_soundboard::Colour;
 use rand::rngs::SmallRng;
 use rand::{RngCore, SeedableRng};
@@ -121,29 +121,41 @@ async fn main(_spawner: Spawner) {
 
     // RefCell needed for mutable access
     let board: Mutex<ThreadModeRawMutex, _> = Mutex::new(RefCell::new(Board::new(i2c, spi).await));
-    let mut small_rng = SmallRng::seed_from_u64(2137);
+    let mut small_rng = SmallRng::seed_from_u64(69);
 
     {
         let _board = board.lock().await;
         for i in 0..16 {
             let timeout = small_rng.next_u32() as u16 as usize / 10;
             let colour = Colour::random(&mut small_rng);
-            _board
-                .borrow_mut()
-                .rgb_leds
-                .add_state(i, fade_out(0b11110000, colour.clone(), 500));
-            _board
-                .borrow_mut()
-                .rgb_leds
-                .add_state(i, solid(0x00, colour.clone(), timeout));
-            _board
-                .borrow_mut()
-                .rgb_leds
-                .add_state(i, fade_in(0b11110000, colour.clone(), 500));
-            _board
-                .borrow_mut()
-                .rgb_leds
-                .add_state(i, solid(0b11110000, colour, timeout));
+            _board.borrow_mut().rgb_leds.add_state(
+                i,
+                Transition::Cyclic(fade_out(0b11110000, colour.clone(), 500)),
+                false,
+            );
+            _board.borrow_mut().rgb_leds.add_state(
+                i,
+                Transition::Cyclic(solid(0x00, colour.clone(), timeout)),
+                false,
+            );
+            _board.borrow_mut().rgb_leds.add_state(
+                i,
+                Transition::Cyclic(fade_in(0b11110000, colour.clone(), 500)),
+                false,
+            );
+            _board.borrow_mut().rgb_leds.add_state(
+                i,
+                Transition::Cyclic(solid(0b11110000, colour, timeout)),
+                false,
+            );
+
+            _board.borrow_mut().add_callback_pressed(0, |_, l| {
+                l.add_state(
+                    0,
+                    Transition::OneTime(solid(0xff, Colour::white(), 100)),
+                    true,
+                )
+            })
         }
     }
 

@@ -33,9 +33,9 @@ where
     pub fn full(&mut self, brightness: u8, colour: Colour) {
         self.leds.iter_mut().for_each(|led| {
             led.state_queue.clear();
-            led.add_state(Box::new(move |_: usize| {
+            led.add_state(Transition::Cyclic(Box::new(move |_: usize| {
                 TransitionResult::InProgress(LedState::new(brightness, &colour))
-            }))
+            })))
         });
     }
 
@@ -43,11 +43,18 @@ where
         self.leds.iter_mut().for_each(|led| led.state_queue.clear());
     }
 
-    pub fn add_state(&mut self, i: u8, transition: Transition) {
-        self.leds
-            .get_mut((i % 16) as usize)
-            .unwrap()
-            .add_state(transition);
+    pub fn add_state(&mut self, i: u8, transition: Transition, immediate: bool) {
+        if immediate {
+            self.leds
+                .get_mut((i % 16) as usize)
+                .unwrap()
+                .immediate_state(transition);
+        } else {
+            self.leds
+                .get_mut((i % 16) as usize)
+                .unwrap()
+                .add_state(transition);
+        }
     }
 
     pub fn pop_state(&mut self, i: u8) {
@@ -91,18 +98,46 @@ impl RGBLed {
 
     pub fn run(&mut self) {
         if let Some(transition) = self.state_queue.current() {
-            match transition(self.counter) {
-                TransitionResult::InProgress(state) => {
-                    self.current_state = state;
-                    self.counter += 1;
+            match transition {
+                Transition::Cyclic(t) => {
+                    match t(self.counter) {
+                        TransitionResult::InProgress(state) => {
+                            self.current_state = state;
+                            self.counter += 1;
+                        }
+                        TransitionResult::Finished => {
+                            // Transition complete, move to the next state
+                            self.state_queue.advance();
+                            self.counter = 0;
+                        }
+                    }
                 }
-                TransitionResult::Finished => {
-                    // Transition complete, move to the next state
-                    self.state_queue.advance();
-                    self.counter = 0;
+                Transition::OneTime(t) => {
+                    match t(self.counter) {
+                        TransitionResult::InProgress(state) => {
+                            self.current_state = state;
+                            self.counter += 1;
+                        }
+                        TransitionResult::Finished => {
+                            // Transition complete, move to the next state
+                            self.state_queue.pop();
+                            self.state_queue.advance();
+                            self.counter = 0;
+                        }
+                    }
                 }
             }
         }
+    }
+
+    pub fn immediate_state(&mut self, transition: Transition) {
+        self.state_queue
+            .insert(
+                (self.state_queue.current_element + 1) % self.state_queue.len(),
+                transition,
+            )
+            .ok();
+        self.state_queue.advance();
     }
 
     /// Add new state at the end of state queue. If full, will replace the last used state
@@ -127,7 +162,9 @@ impl LedStateQueue {
             queue: Vec::new(),
             current_element: 0,
         };
-        q.push(Box::new(|_: usize| TransitionResult::Finished));
+        q.push(Transition::Cyclic(Box::new(|_: usize| {
+            TransitionResult::Finished
+        })));
         q
     }
 
@@ -158,6 +195,10 @@ impl LedStateQueue {
         }
     }
 
+    pub fn insert(&mut self, index: usize, transition: Transition) -> Result<(), Transition> {
+        self.queue.insert(index, transition)
+    }
+
     pub fn len(&self) -> usize {
         self.queue.len()
     }
@@ -168,11 +209,16 @@ impl LedStateQueue {
     }
 }
 
+pub enum Transition {
+    Cyclic(TransitionFunction),
+    OneTime(TransitionFunction),
+}
+
 /// Transition defines the state in a function of time
 // pub type Transition = fn(current_ticks: usize) -> TransitionResult;
-pub type Transition = Box<dyn Fn(usize) -> TransitionResult>;
+type TransitionFunction = Box<dyn Fn(usize) -> TransitionResult>;
 
-pub fn solid(brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
+pub fn solid(brightness: u8, colour: Colour, duration_ticks: usize) -> TransitionFunction {
     if duration_ticks != 0 {
         Box::new(move |counter: usize| {
             if counter < duration_ticks {
@@ -186,7 +232,11 @@ pub fn solid(brightness: u8, colour: Colour, duration_ticks: usize) -> Transitio
     }
 }
 
-pub fn fade_out(initial_brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
+pub fn fade_out(
+    initial_brightness: u8,
+    colour: Colour,
+    duration_ticks: usize,
+) -> TransitionFunction {
     Box::new(move |counter: usize| {
         if counter < duration_ticks {
             TransitionResult::InProgress(LedState::new(
@@ -200,7 +250,7 @@ pub fn fade_out(initial_brightness: u8, colour: Colour, duration_ticks: usize) -
     })
 }
 
-pub fn fade_in(target_brightness: u8, colour: Colour, duration_ticks: usize) -> Transition {
+pub fn fade_in(target_brightness: u8, colour: Colour, duration_ticks: usize) -> TransitionFunction {
     Box::new(move |counter: usize| {
         if counter < duration_ticks {
             TransitionResult::InProgress(LedState::new(
