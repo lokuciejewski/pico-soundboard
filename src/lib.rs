@@ -1,5 +1,6 @@
 #![no_std]
 
+use defmt::Format;
 use rand::RngCore;
 use rgbleds::RGBLeds;
 
@@ -130,4 +131,16 @@ impl Colour {
             blue: rng.next_u32() as u8,
         }
     }
+
+    pub fn invert(&self) -> Colour {
+        Colour::rgb(!self.red, !self.green, !self.blue)
+    }
+}
+
+#[derive(Format, PartialEq)]
+pub enum ButtonState {
+    Pressed,
+    Held,
+    Released,
+    Idle,
 }

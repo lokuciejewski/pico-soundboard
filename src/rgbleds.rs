@@ -1,12 +1,13 @@
+use defmt::info;
 use embedded_hal_async::spi::SpiBus;
 
 use heapless::Vec;
 extern crate alloc;
 use alloc::boxed::Box;
 
-use crate::Colour;
+use crate::{ButtonState, Colour};
 
-pub struct RGBLeds<SPI> {
+pub(crate) struct RGBLeds<SPI> {
     spi: SPI,
     _start_frame: [u8; 4],
     leds: Vec<RGBLed, 16>,
@@ -32,33 +33,49 @@ where
 
     pub fn full(&mut self, brightness: u8, colour: Colour) {
         self.leds.iter_mut().for_each(|led| {
-            led.state_queue.clear();
-            led.add_state(Transition::Cyclic(Box::new(move |_: usize| {
-                TransitionResult::InProgress(LedState::new(brightness, &colour))
-            })))
+            led.clear(&[
+                ButtonState::Held,
+                ButtonState::Idle,
+                ButtonState::Pressed,
+                ButtonState::Released,
+            ]);
+            led.add_state(
+                Box::new(move |_: usize| {
+                    TransitionResult::InProgress(LedState::new(brightness, &colour))
+                }),
+                &ButtonState::Idle,
+            )
         });
     }
 
     pub fn clear(&mut self) {
-        self.leds.iter_mut().for_each(|led| led.state_queue.clear());
+        self.leds.iter_mut().for_each(|led| {
+            led.clear(&[
+                ButtonState::Held,
+                ButtonState::Idle,
+                ButtonState::Pressed,
+                ButtonState::Released,
+            ])
+        });
     }
 
-    pub fn add_state(&mut self, i: u8, transition: Transition, immediate: bool) {
-        if immediate {
-            self.leds
-                .get_mut((i % 16) as usize)
-                .unwrap()
-                .immediate_state(transition);
-        } else {
-            self.leds
-                .get_mut((i % 16) as usize)
-                .unwrap()
-                .add_state(transition);
+    pub fn add_state(&mut self, i: usize, transition: TransitionFunction, for_state: &ButtonState) {
+        self.leds
+            .get_mut(i % 16)
+            .unwrap()
+            .add_state(transition, for_state);
+    }
+
+    pub fn pop_state(&mut self, i: usize, from_state: &ButtonState) {
+        self.leds.get_mut(i).unwrap().pop_state(from_state);
+    }
+
+    pub fn set_button_state(&mut self, i: usize, new_state: ButtonState) {
+        let led = self.leds.get_mut(i).unwrap();
+        if new_state != led.button_state {
+            led.button_state = new_state;
+            led.counter = 0;
         }
-    }
-
-    pub fn pop_state(&mut self, i: u8) {
-        self.leds.get_mut(i as usize).unwrap().pop_state();
     }
 
     pub async fn refresh(&mut self) {
@@ -81,9 +98,13 @@ where
     }
 }
 
-struct RGBLed {
+pub(crate) struct RGBLed {
     current_state: LedState,
-    state_queue: LedStateQueue,
+    button_state: ButtonState,
+    on_pressed: LedStateQueue,
+    on_held: LedStateQueue,
+    on_released: LedStateQueue,
+    on_idle: LedStateQueue,
     counter: usize,
 }
 
@@ -91,68 +112,71 @@ impl RGBLed {
     pub fn new() -> Self {
         Self {
             current_state: LedState::default(),
-            state_queue: LedStateQueue::new(),
+            button_state: ButtonState::Idle,
+            on_pressed: LedStateQueue::new(),
+            on_held: LedStateQueue::new(),
+            on_released: LedStateQueue::new(),
+            on_idle: LedStateQueue::new(),
             counter: 0usize,
         }
     }
 
     pub fn run(&mut self) {
-        if let Some(transition) = self.state_queue.current() {
-            match transition {
-                Transition::Cyclic(t) => {
-                    match t(self.counter) {
-                        TransitionResult::InProgress(state) => {
-                            self.current_state = state;
-                            self.counter += 1;
-                        }
-                        TransitionResult::Finished => {
-                            // Transition complete, move to the next state
-                            self.state_queue.advance();
-                            self.counter = 0;
-                        }
-                    }
+        let queue = match self.button_state {
+            ButtonState::Pressed => &mut self.on_pressed,
+            ButtonState::Held => &mut self.on_held,
+            ButtonState::Released => &mut self.on_released,
+            ButtonState::Idle => &mut self.on_idle,
+        };
+        if let Some(transition) = queue.current() {
+            match transition(self.counter) {
+                TransitionResult::InProgress(state) => {
+                    self.current_state = state;
+                    self.counter += 1;
                 }
-                Transition::OneTime(t) => {
-                    match t(self.counter) {
-                        TransitionResult::InProgress(state) => {
-                            self.current_state = state;
-                            self.counter += 1;
-                        }
-                        TransitionResult::Finished => {
-                            // Transition complete, move to the next state
-                            self.state_queue.pop();
-                            self.state_queue.advance();
-                            self.counter = 0;
-                        }
-                    }
+                TransitionResult::Finished => {
+                    // Transition complete, move to the next state
+                    queue.advance();
+                    self.counter = 0;
                 }
             }
         }
     }
 
-    pub fn immediate_state(&mut self, transition: Transition) {
-        self.state_queue
-            .insert(
-                (self.state_queue.current_element + 1) % self.state_queue.len(),
-                transition,
-            )
-            .ok();
-        self.state_queue.advance();
+    pub fn clear(&mut self, from_states: &[ButtonState]) {
+        for state in from_states {
+            match state {
+                ButtonState::Pressed => self.on_pressed.clear(),
+                ButtonState::Held => self.on_held.clear(),
+                ButtonState::Released => self.on_released.clear(),
+                ButtonState::Idle => self.on_idle.clear(),
+            }
+        }
     }
 
     /// Add new state at the end of state queue. If full, will replace the last used state
-    pub fn add_state(&mut self, transition: Transition) {
-        self.state_queue.push(transition)
+    pub fn add_state(&mut self, transition: TransitionFunction, for_state: &ButtonState) {
+        match for_state {
+            ButtonState::Pressed => self.on_pressed.push(transition),
+            ButtonState::Held => self.on_held.push(transition),
+            ButtonState::Released => self.on_released.push(transition),
+            ButtonState::Idle => self.on_idle.push(transition),
+        }
     }
 
     /// Pop the current state
-    pub fn pop_state(&mut self) {
-        self.state_queue.pop();
+    pub fn pop_state(&mut self, from_state: &ButtonState) {
+        match from_state {
+            ButtonState::Pressed => self.on_pressed.pop(),
+            ButtonState::Held => self.on_held.pop(),
+            ButtonState::Released => self.on_released.pop(),
+            ButtonState::Idle => self.on_idle.pop(),
+        };
     }
 }
 
 struct LedStateQueue {
-    queue: Vec<Transition, 16>,
+    queue: Vec<TransitionFunction, 8>,
     current_element: usize,
 }
 
@@ -162,21 +186,21 @@ impl LedStateQueue {
             queue: Vec::new(),
             current_element: 0,
         };
-        q.push(Transition::Cyclic(Box::new(|_: usize| {
-            TransitionResult::Finished
-        })));
+        q.push(Box::new(|_: usize| TransitionResult::Finished));
         q
     }
 
     pub fn advance(&mut self) {
-        self.current_element = (self.current_element + 1) % self.queue.len();
+        if !self.queue.is_empty() {
+            self.current_element = (self.current_element + 1) % self.queue.len();
+        }
     }
 
-    pub fn current(&self) -> Option<&Transition> {
+    pub fn current(&self) -> Option<&TransitionFunction> {
         self.queue.get(self.current_element)
     }
 
-    pub fn push(&mut self, transition: Transition) {
+    pub fn push(&mut self, transition: TransitionFunction) {
         match self.queue.push(transition) {
             Ok(_) => (),
             Err(elem) => {
@@ -186,7 +210,7 @@ impl LedStateQueue {
         }
     }
 
-    pub fn pop(&mut self) -> Option<Transition> {
+    pub fn pop(&mut self) -> Option<TransitionFunction> {
         if let Some(x) = self.queue.pop() {
             self.current_element = (self.current_element - 1) % self.len();
             Some(x)
@@ -195,7 +219,11 @@ impl LedStateQueue {
         }
     }
 
-    pub fn insert(&mut self, index: usize, transition: Transition) -> Result<(), Transition> {
+    pub fn insert(
+        &mut self,
+        index: usize,
+        transition: TransitionFunction,
+    ) -> Result<(), TransitionFunction> {
         self.queue.insert(index, transition)
     }
 
@@ -209,14 +237,9 @@ impl LedStateQueue {
     }
 }
 
-pub enum Transition {
-    Cyclic(TransitionFunction),
-    OneTime(TransitionFunction),
-}
-
 /// Transition defines the state in a function of time
 // pub type Transition = fn(current_ticks: usize) -> TransitionResult;
-type TransitionFunction = Box<dyn Fn(usize) -> TransitionResult>;
+pub(crate) type TransitionFunction = Box<dyn Fn(usize) -> TransitionResult>;
 
 pub fn solid(brightness: u8, colour: Colour, duration_ticks: usize) -> TransitionFunction {
     if duration_ticks != 0 {
