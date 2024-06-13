@@ -2,29 +2,26 @@
 
 use defmt::Format;
 use rand::RngCore;
-use rgbleds::RGBLeds;
 
+pub mod animations;
 pub mod board;
 pub mod rgbleds;
+pub mod transitions;
 pub mod usb_keyboard;
 
-#[derive(Clone, Copy)]
-pub struct Button<SPI> {
+#[derive(Clone)]
+pub struct Button {
     _code: ButtonCode,
     pub rgb_led_index: u8,
     pressed: bool,
-    callback_pressed: fn(&Button<SPI>, &mut RGBLeds<SPI>) -> (),
-    callback_released: fn(&Button<SPI>, &mut RGBLeds<SPI>) -> (),
 }
 
-impl<SPI> Button<SPI> {
+impl Button {
     pub fn new(code: ButtonCode) -> Self {
         Self {
             _code: code,
             rgb_led_index: code.to_index(),
             pressed: false,
-            callback_pressed: |_button, _leds| (),
-            callback_released: |_button, _leds| (),
         }
     }
 }
@@ -138,7 +135,7 @@ impl Colour {
     }
 }
 
-#[derive(Format, PartialEq)]
+#[derive(Format, PartialEq, Clone)]
 pub enum ButtonState {
     Pressed,
     Held,

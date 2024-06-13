@@ -1,11 +1,12 @@
-use defmt::info;
-use embedded_hal_async::spi::SpiBus;
-
-use heapless::Vec;
 extern crate alloc;
 use alloc::boxed::Box;
+use embedded_hal_async::spi::SpiBus;
+use heapless::Vec;
 
-use crate::{ButtonState, Colour};
+use crate::{
+    transitions::{TransitionFunction, TransitionResult},
+    ButtonState, Colour,
+};
 
 pub(crate) struct RGBLeds<SPI> {
     spi: SPI,
@@ -34,10 +35,10 @@ where
     pub fn full(&mut self, brightness: u8, colour: Colour) {
         self.leds.iter_mut().for_each(|led| {
             led.clear(&[
-                ButtonState::Held,
-                ButtonState::Idle,
-                ButtonState::Pressed,
-                ButtonState::Released,
+                &ButtonState::Held,
+                &ButtonState::Idle,
+                &ButtonState::Pressed,
+                &ButtonState::Released,
             ]);
             led.add_state(
                 Box::new(move |_: usize| {
@@ -48,15 +49,19 @@ where
         });
     }
 
-    pub fn clear(&mut self) {
+    pub fn clear_all(&mut self) {
         self.leds.iter_mut().for_each(|led| {
             led.clear(&[
-                ButtonState::Held,
-                ButtonState::Idle,
-                ButtonState::Pressed,
-                ButtonState::Released,
+                &ButtonState::Held,
+                &ButtonState::Idle,
+                &ButtonState::Pressed,
+                &ButtonState::Released,
             ])
         });
+    }
+
+    pub fn clear(&mut self, index: usize, states: &[&ButtonState]) {
+        self.leds.get_mut(index % 16).unwrap().clear(states)
     }
 
     pub fn add_state(&mut self, i: usize, transition: TransitionFunction, for_state: &ButtonState) {
@@ -72,16 +77,19 @@ where
 
     pub fn set_button_state(&mut self, i: usize, new_state: ButtonState) {
         let led = self.leds.get_mut(i).unwrap();
-        if new_state != led.button_state {
-            led.button_state = new_state;
-            match led.button_state {
-                // TODO: Should queue be reset on idle?
-                ButtonState::Pressed => led.on_pressed.restart(),
-                ButtonState::Held => led.on_held.restart(),
-                ButtonState::Released => led.on_released.restart(),
-                ButtonState::Idle => led.on_idle.restart(),
-            };
-            led.counter = 0;
+        // Do not set the state if it is locked
+        if led.lock_state.is_none() {
+            if new_state != led.button_state {
+                led.button_state = new_state;
+                match led.button_state {
+                    // TODO: Should queue be reset on idle?
+                    ButtonState::Pressed => led.on_pressed.restart(),
+                    ButtonState::Held => led.on_held.restart(),
+                    ButtonState::Released => led.on_released.restart(),
+                    ButtonState::Idle => led.on_idle.restart(),
+                };
+                led.counter = 0;
+            }
         }
     }
 
@@ -103,6 +111,14 @@ where
 
         self.spi.write(&self._end_frame).await.unwrap();
     }
+
+    pub fn lock_led_state(&mut self, index: usize, state: &ButtonState) {
+        self.leds.get_mut(index % 16).unwrap().lock_state(state);
+    }
+
+    pub fn unlock_led_state(&mut self, index: usize) {
+        self.leds.get_mut(index % 16).unwrap().unlock_state();
+    }
 }
 
 pub(crate) struct RGBLed {
@@ -113,6 +129,7 @@ pub(crate) struct RGBLed {
     on_released: LedStateQueue,
     on_idle: LedStateQueue,
     counter: usize,
+    lock_state: Option<ButtonState>,
 }
 
 impl RGBLed {
@@ -125,16 +142,27 @@ impl RGBLed {
             on_released: LedStateQueue::new(),
             on_idle: LedStateQueue::new(),
             counter: 0usize,
+            lock_state: None,
         }
     }
 
     pub fn run(&mut self) {
-        let queue = match self.button_state {
-            ButtonState::Pressed => &mut self.on_pressed,
-            ButtonState::Held => &mut self.on_held,
-            ButtonState::Released => &mut self.on_released,
-            ButtonState::Idle => &mut self.on_idle,
+        let queue = if let Some(locked_state) = &self.lock_state {
+            match locked_state {
+                ButtonState::Pressed => &mut self.on_pressed,
+                ButtonState::Held => &mut self.on_held,
+                ButtonState::Released => &mut self.on_released,
+                ButtonState::Idle => &mut self.on_idle,
+            }
+        } else {
+            match self.button_state {
+                ButtonState::Pressed => &mut self.on_pressed,
+                ButtonState::Held => &mut self.on_held,
+                ButtonState::Released => &mut self.on_released,
+                ButtonState::Idle => &mut self.on_idle,
+            }
         };
+
         if let Some(transition) = queue.current() {
             match transition(self.counter) {
                 TransitionResult::InProgress(state) => {
@@ -150,7 +178,7 @@ impl RGBLed {
         }
     }
 
-    pub fn clear(&mut self, from_states: &[ButtonState]) {
+    pub fn clear(&mut self, from_states: &[&ButtonState]) {
         for state in from_states {
             match state {
                 ButtonState::Pressed => self.on_pressed.clear(),
@@ -179,6 +207,14 @@ impl RGBLed {
             ButtonState::Released => self.on_released.pop(),
             ButtonState::Idle => self.on_idle.pop(),
         };
+    }
+
+    pub fn lock_state(&mut self, state: &ButtonState) {
+        self.lock_state = Some(state.clone())
+    }
+
+    pub fn unlock_state(&mut self) {
+        self.lock_state = None
     }
 }
 
@@ -246,60 +282,6 @@ impl LedStateQueue {
         self.queue = Vec::new();
         self.current_element = 0;
     }
-}
-
-/// Transition defines the state in a function of time
-// pub type Transition = fn(current_ticks: usize) -> TransitionResult;
-pub(crate) type TransitionFunction = Box<dyn Fn(usize) -> TransitionResult>;
-
-pub fn solid(brightness: u8, colour: Colour, duration_ticks: usize) -> TransitionFunction {
-    if duration_ticks != 0 {
-        Box::new(move |counter: usize| {
-            if counter < duration_ticks {
-                TransitionResult::InProgress(LedState::new(brightness, &colour))
-            } else {
-                TransitionResult::Finished
-            }
-        })
-    } else {
-        Box::new(move |_: usize| TransitionResult::InProgress(LedState::new(brightness, &colour)))
-    }
-}
-
-pub fn fade_out(
-    initial_brightness: u8,
-    colour: Colour,
-    duration_ticks: usize,
-) -> TransitionFunction {
-    Box::new(move |counter: usize| {
-        if counter < duration_ticks {
-            TransitionResult::InProgress(LedState::new(
-                initial_brightness
-                    - (counter * (initial_brightness & 0b00011111) as usize / duration_ticks) as u8,
-                &colour,
-            ))
-        } else {
-            TransitionResult::Finished
-        }
-    })
-}
-
-pub fn fade_in(target_brightness: u8, colour: Colour, duration_ticks: usize) -> TransitionFunction {
-    Box::new(move |counter: usize| {
-        if counter < duration_ticks {
-            TransitionResult::InProgress(LedState::new(
-                (counter * (target_brightness & 0b00011111) as usize / duration_ticks) as u8,
-                &colour,
-            ))
-        } else {
-            TransitionResult::Finished
-        }
-    })
-}
-
-pub enum TransitionResult {
-    InProgress(LedState),
-    Finished,
 }
 
 #[derive(Clone, Copy, Default)]

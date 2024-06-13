@@ -1,13 +1,25 @@
+extern crate alloc;
+
+use alloc::boxed::Box;
 use embedded_hal_async::{i2c::I2c, spi::SpiBus};
+use heapless::Vec;
 
 use crate::{
-    rgbleds::{RGBLeds, TransitionFunction},
-    Button, ButtonCode, ButtonState, Colour,
+    rgbleds::RGBLeds, transitions::TransitionFunction, Button, ButtonCode, ButtonState, Colour,
 };
+
+type ButtonCallback<I2C, SPI> = Option<Box<dyn Fn(&mut Board<I2C, SPI>) -> ButtonCallbackResult>>;
+
+pub enum ButtonCallbackResult {
+    Remove,
+    Keep,
+}
 
 pub struct Board<I2C, SPI> {
     i2c: I2C,
-    buttons: [Button<SPI>; 16],
+    buttons: [Button; 16],
+    callbacks_pressed: Vec<ButtonCallback<I2C, SPI>, 16>,
+    callbacks_released: Vec<ButtonCallback<I2C, SPI>, 16>,
     rgb_leds: RGBLeds<SPI>,
 }
 
@@ -20,42 +32,40 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
         rgb_leds.refresh().await;
         rgb_leds.full(0xff, Colour::rgb(0x0, 0x0, 0x0));
         rgb_leds.refresh().await;
-        rgb_leds.clear();
+        rgb_leds.clear_all();
         rgb_leds.refresh().await;
+
+        let mut callbacks_pressed: Vec<ButtonCallback<I2C, SPI>, 16> = Vec::new();
+        let mut callbacks_released: Vec<ButtonCallback<I2C, SPI>, 16> = Vec::new();
+
+        (0..16).for_each(|_| {
+            let _ = callbacks_pressed.push(None);
+            let _ = callbacks_released.push(None);
+        });
 
         Self {
             i2c,
             buttons,
             rgb_leds,
+            callbacks_pressed,
+            callbacks_released,
         }
     }
 
-    pub fn add_callback_pressed(
-        &mut self,
-        button_idx: u8,
-        callback: fn(&Button<SPI>, &mut RGBLeds<SPI>) -> (),
-    ) {
-        if let Some(b) = self
-            .buttons
-            .iter_mut()
-            .find(|b| b.rgb_led_index == button_idx)
-        {
-            b.callback_pressed = callback;
-        };
+    pub fn add_callback_pressed(&mut self, button_idx: usize, callback: ButtonCallback<I2C, SPI>) {
+        self.callbacks_pressed[map_idx_from_button_to_led(button_idx)] = callback;
     }
 
-    pub fn add_callback_released(
-        &mut self,
-        button_idx: u8,
-        callback: fn(&Button<SPI>, &mut RGBLeds<SPI>) -> (),
-    ) {
-        if let Some(b) = self
-            .buttons
-            .iter_mut()
-            .find(|b| b.rgb_led_index == button_idx)
-        {
-            b.callback_released = callback;
-        };
+    pub fn remove_callback_pressed(&mut self, button_idx: usize) {
+        self.callbacks_pressed[map_idx_from_button_to_led(button_idx)] = None;
+    }
+
+    pub fn add_callback_released(&mut self, button_idx: usize, callback: ButtonCallback<I2C, SPI>) {
+        self.callbacks_released[map_idx_from_button_to_led(button_idx)] = callback;
+    }
+
+    pub fn remove_callback_released(&mut self, button_idx: usize) {
+        self.callbacks_released[map_idx_from_button_to_led(button_idx)] = None;
     }
 
     pub fn add_led_state(
@@ -69,6 +79,34 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
 
     pub async fn refresh_leds(&mut self) {
         self.rgb_leds.refresh().await;
+    }
+
+    pub fn lock_led_states(&mut self, state: &ButtonState) {
+        for i in 0..16 {
+            self.rgb_leds.lock_led_state(i, state);
+        }
+    }
+
+    pub fn unlock_led_states(&mut self) {
+        for i in 0..16 {
+            self.rgb_leds.unlock_led_state(i);
+        }
+    }
+
+    pub fn clear_led_queues(&mut self, index: usize) {
+        self.rgb_leds.clear(
+            index,
+            &[
+                &ButtonState::Held,
+                &ButtonState::Idle,
+                &ButtonState::Pressed,
+                &ButtonState::Released,
+            ],
+        );
+    }
+
+    pub fn clear_led_queue(&mut self, index: usize, states: &[&ButtonState]) {
+        self.rgb_leds.clear(index, states);
     }
 
     // Return 6 first pressed keys (max supported by `usbd_hid`'s `KeyboardReport`)
@@ -103,7 +141,16 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                             );
                             counter += 1;
                             self.buttons[i].pressed = true;
-                            (self.buttons[i].callback_pressed)(&self.buttons[i], &mut self.rgb_leds)
+                            let callback = self.callbacks_pressed.get_mut(i).unwrap().take();
+                            if callback.is_some() {
+                                let cb = callback.unwrap();
+                                match cb(self) {
+                                    ButtonCallbackResult::Remove => {}
+                                    ButtonCallbackResult::Keep => {
+                                        self.callbacks_pressed[i] = Some(cb);
+                                    }
+                                }
+                            }
                         }
                         (false, true) => {
                             // Button was pressed but now is released, call the released callback
@@ -112,10 +159,16 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                                 ButtonState::Released,
                             );
                             self.buttons[i].pressed = false;
-                            (self.buttons[i].callback_released)(
-                                &self.buttons[i],
-                                &mut self.rgb_leds,
-                            )
+                            let callback = self.callbacks_released.get_mut(i).unwrap().take();
+                            if callback.is_some() {
+                                let cb = callback.unwrap();
+                                match cb(self) {
+                                    ButtonCallbackResult::Remove => {}
+                                    ButtonCallbackResult::Keep => {
+                                        self.callbacks_released[i] = Some(cb);
+                                    }
+                                }
+                            }
                         }
                         (false, false) => {
                             // Was not pressed and is still not pressed now, do nothing

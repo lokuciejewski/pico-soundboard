@@ -4,6 +4,7 @@
 use core::cell::RefCell;
 extern crate alloc;
 
+use alloc::boxed::Box;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
@@ -14,15 +15,16 @@ use embassy_rp::spi::{self, Phase, Polarity, Spi};
 use embassy_rp::usb::Driver;
 use embassy_rp::{bind_interrupts, i2c};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Ticker};
 use embedded_alloc::Heap;
-use pico_soundboard::board::Board;
-use pico_soundboard::rgbleds::{fade_in, fade_out, solid};
+use pico_soundboard::animations::{breathing, loading_circle, random_fades};
+use pico_soundboard::board::{Board, ButtonCallbackResult};
 use pico_soundboard::usb_keyboard::setup_usb_keyboard;
 use pico_soundboard::{ButtonState, Colour};
 use rand::rngs::SmallRng;
-use rand::{RngCore, SeedableRng};
+use rand::SeedableRng;
 use {defmt_rtt as _, panic_probe as _};
 
 #[global_allocator]
@@ -68,50 +70,29 @@ async fn main(_spawner: Spawner) {
 
     // RefCell needed for mutable access
     let board: Mutex<ThreadModeRawMutex, _> = Mutex::new(RefCell::new(Board::new(i2c, spi).await));
-    let mut small_rng = SmallRng::seed_from_u64(69);
 
     {
-        let _board = board.lock().await;
-        for i in 0..16 {
-            let timeout = small_rng.next_u32() as u16 as usize / 10;
-            let colour = Colour::random(&mut small_rng);
-            _board.borrow_mut().add_led_state(
-                i,
-                fade_out(0b11110000, colour.clone(), 500),
-                &ButtonState::Idle,
-            );
-            _board.borrow_mut().add_led_state(
-                i,
-                solid(0x00, colour.clone(), timeout),
-                &ButtonState::Idle,
-            );
-            _board.borrow_mut().add_led_state(
-                i,
-                fade_in(0b11110000, colour.clone(), 500),
-                &ButtonState::Idle,
-            );
-            _board.borrow_mut().add_led_state(
-                i,
-                solid(0b11110000, colour.clone(), timeout),
-                &ButtonState::Idle,
-            );
-
-            _board.borrow_mut().add_led_state(
-                i,
-                solid(0xff, colour.invert(), 100),
-                &ButtonState::Held,
-            );
-            _board.borrow_mut().add_led_state(
-                i,
-                fade_out(0xff, colour.invert(), 250),
-                &ButtonState::Held,
-            );
-            _board.borrow_mut().add_led_state(
-                i,
-                solid(0x00, colour.invert(), 0),
-                &ButtonState::Held,
-            );
-        }
+        let mut _board = board.lock().await;
+        _board.get_mut().lock_led_states(&ButtonState::Idle);
+        loading_circle(&mut _board.borrow_mut(), Colour::rgb(0x50, 0x0, 0x50), 100);
+        breathing(
+            &mut _board.borrow_mut(),
+            5,
+            &ButtonState::Idle,
+            Colour::rgb(0x0, 0x70, 0x10),
+            500,
+        );
+        _board.get_mut().add_callback_pressed(
+            5,
+            Some(Box::new(|board| -> ButtonCallbackResult {
+                for i in 0..16 {
+                    board.clear_led_queues(i);
+                }
+                let mut small_rng = SmallRng::seed_from_u64(69);
+                random_fades(board, &mut small_rng);
+                ButtonCallbackResult::Remove
+            })),
+        )
     }
 
     // This is needed so that led refresh rate is independent of USB poll rate
@@ -119,7 +100,7 @@ async fn main(_spawner: Spawner) {
         let mut ticker = Ticker::every(Duration::from_millis(1));
         loop {
             {
-                board.lock().await.borrow_mut().refresh_leds().await;
+                board.lock().await.get_mut().refresh_leds().await;
             }
             ticker.next().await;
         }
