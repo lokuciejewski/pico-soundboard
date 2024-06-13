@@ -74,6 +74,12 @@ where
         let led = self.leds.get_mut(i).unwrap();
         if new_state != led.button_state {
             led.button_state = new_state;
+            match led.button_state {
+                ButtonState::Pressed => led.on_pressed.restart(),
+                ButtonState::Held => led.on_held.restart(),
+                ButtonState::Released => led.on_released.restart(),
+                ButtonState::Idle => led.on_idle.restart(),
+            };
             led.counter = 0;
         }
     }
@@ -217,6 +223,10 @@ impl LedStateQueue {
         } else {
             None
         }
+    }
+
+    pub fn restart(&mut self) {
+        self.current_element = 0;
     }
 
     pub fn insert(

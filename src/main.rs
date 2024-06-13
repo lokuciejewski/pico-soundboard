@@ -150,25 +150,30 @@ async fn main(_spawner: Spawner) {
             );
 
             _board.borrow_mut().add_led_state(
-                0,
-                fade_out(0b11110000, colour.invert(), 250),
+                i,
+                solid(0xff, colour.invert(), 100),
                 &ButtonState::Held,
             );
             _board.borrow_mut().add_led_state(
-                0,
-                solid(0x00, colour.invert(), timeout / 2),
+                i,
+                fade_out(0xff, colour.invert(), 250),
                 &ButtonState::Held,
             );
             _board.borrow_mut().add_led_state(
-                0,
-                fade_in(0b11110000, colour.invert(), 250),
+                i,
+                solid(0x00, colour.invert(), 0),
                 &ButtonState::Held,
             );
-            _board.borrow_mut().add_led_state(
-                0,
-                solid(0b11110000, colour.invert(), timeout / 2),
-                &ButtonState::Held,
-            );
+            // _board.borrow_mut().add_led_state(
+            //     i,
+            //     fade_in(0b11110000, colour.invert(), 250),
+            //     &ButtonState::Held,
+            // );
+            // _board.borrow_mut().add_led_state(
+            //     i,
+            //     solid(0b11110000, colour.invert(), timeout / 2),
+            //     &ButtonState::Held,
+            // );
         }
     }
 
