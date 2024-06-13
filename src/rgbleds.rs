@@ -266,14 +266,6 @@ impl LedStateQueue {
         self.current_element = 0;
     }
 
-    pub fn insert(
-        &mut self,
-        index: usize,
-        transition: TransitionFunction,
-    ) -> Result<(), TransitionFunction> {
-        self.queue.insert(index, transition)
-    }
-
     pub fn len(&self) -> usize {
         self.queue.len()
     }
