@@ -75,6 +75,7 @@ where
         if new_state != led.button_state {
             led.button_state = new_state;
             match led.button_state {
+                // TODO: Should queue be reset on idle?
                 ButtonState::Pressed => led.on_pressed.restart(),
                 ButtonState::Held => led.on_held.restart(),
                 ButtonState::Released => led.on_released.restart(),

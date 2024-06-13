@@ -6,6 +6,7 @@ use rgbleds::RGBLeds;
 
 pub mod board;
 pub mod rgbleds;
+pub mod usb_keyboard;
 
 #[derive(Clone, Copy)]
 pub struct Button<SPI> {
