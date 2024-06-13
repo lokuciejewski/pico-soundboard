@@ -78,16 +78,23 @@ pub async fn setup_usb_keyboard(
 
     let in_fut = async {
         loop {
-            let keycodes: [u8; 6];
-            {
-                keycodes = board
+            let key_states = {
+                board
                     .lock()
                     .await
                     .borrow_mut()
                     .update_status()
                     .await
-                    .unwrap();
-            }
+                    .unwrap()
+            };
+            let mut keycodes = [0u8; 6];
+
+            key_states
+                .into_iter()
+                .filter(|&k| k != 0)
+                .enumerate()
+                .for_each(|(idx, k)| keycodes[idx] = k);
+
             let report = KeyboardReport {
                 keycodes,
                 leds: 0,

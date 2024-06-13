@@ -91,6 +91,7 @@ async fn main(_spawner: Spawner) {
                 let mut small_rng = SmallRng::seed_from_u64(69);
                 random_fades(board, &mut small_rng);
                 board.unlock_led_states();
+                board.enable_keyboard_input();
                 ButtonCallbackResult::Remove
             })),
         )

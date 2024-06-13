@@ -21,6 +21,7 @@ pub struct Board<I2C, SPI> {
     callbacks_pressed: Vec<ButtonCallback<I2C, SPI>, 16>,
     callbacks_released: Vec<ButtonCallback<I2C, SPI>, 16>,
     rgb_leds: RGBLeds<SPI>,
+    keyboard_input_enabled: bool,
 }
 
 impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
@@ -49,6 +50,7 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
             rgb_leds,
             callbacks_pressed,
             callbacks_released,
+            keyboard_input_enabled: false,
         }
     }
 
@@ -66,6 +68,14 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
 
     pub fn remove_callback_released(&mut self, button_idx: usize) {
         self.callbacks_released[map_idx_from_button_to_led(button_idx)] = None;
+    }
+
+    pub fn disable_keyboard_input(&mut self) {
+        self.keyboard_input_enabled = false;
+    }
+
+    pub fn enable_keyboard_input(&mut self) {
+        self.keyboard_input_enabled = true;
     }
 
     pub fn add_led_state(
@@ -110,15 +120,14 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
     }
 
     // Return 6 first pressed keys (max supported by `usbd_hid`'s `KeyboardReport`)
-    pub async fn update_status(&mut self) -> Result<[u8; 6], &str> {
+    pub async fn update_status(&mut self) -> Result<[u8; 16], &str> {
         let mut i2c_read_buffer = [0u8; 2];
         let temp = [1];
         self.i2c.write(0x20, &temp).await.unwrap();
         self.i2c.read(0x20, &mut i2c_read_buffer).await.unwrap();
         let states = !((i2c_read_buffer[0] as u16) | ((i2c_read_buffer[1] as u16) << 8));
 
-        let mut pressed_buffer = [0u8; 6];
-        let mut counter = 0usize;
+        let mut pressed_buffer = [0u8; 16];
 
         for i in 0..16 {
             match ButtonCode::try_from(1 << i) {
@@ -127,19 +136,21 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                     match (pressed_now, self.buttons[i].pressed) {
                         (true, true) => {
                             // Was pressed before and is still pressed
-                            pressed_buffer[counter] = self.buttons[i].rgb_led_index + 4;
+                            if self.keyboard_input_enabled {
+                                pressed_buffer[i] = self.buttons[i].rgb_led_index + 4;
+                            }
                             self.rgb_leds
                                 .set_button_state(map_idx_from_button_to_led(i), ButtonState::Held);
-                            counter += 1;
                         }
                         (true, false) => {
                             // Was not pressed before but is pressed now, call the callback
-                            pressed_buffer[counter] = self.buttons[i].rgb_led_index + 4;
+                            if self.keyboard_input_enabled {
+                                pressed_buffer[i] = self.buttons[i].rgb_led_index + 4;
+                            }
                             self.rgb_leds.set_button_state(
                                 map_idx_from_button_to_led(i),
                                 ButtonState::Pressed,
                             );
-                            counter += 1;
                             self.buttons[i].pressed = true;
                             let callback = self.callbacks_pressed.get_mut(i).unwrap().take();
                             if callback.is_some() {
@@ -175,10 +186,6 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                             self.rgb_leds
                                 .set_button_state(map_idx_from_button_to_led(i), ButtonState::Idle);
                         }
-                    }
-                    // Collect only 6 buttons at once since there is no NKR
-                    if counter == 6 {
-                        return Ok(pressed_buffer);
                     }
                 }
                 Err(_) => {
