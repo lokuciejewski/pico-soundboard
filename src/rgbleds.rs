@@ -78,18 +78,16 @@ where
     pub fn set_button_state(&mut self, i: usize, new_state: ButtonState) {
         let led = self.leds.get_mut(i).unwrap();
         // Do not set the state if it is locked
-        if led.lock_state.is_none() {
-            if new_state != led.button_state {
-                led.button_state = new_state;
-                match led.button_state {
-                    // TODO: Should queue be reset on idle?
-                    ButtonState::Pressed => led.on_pressed.restart(),
-                    ButtonState::Held => led.on_held.restart(),
-                    ButtonState::Released => led.on_released.restart(),
-                    ButtonState::Idle => led.on_idle.restart(),
-                };
-                led.counter = 0;
-            }
+        if led.lock_state.is_none() && new_state != led.button_state {
+            led.button_state = new_state;
+            match led.button_state {
+                // TODO: Should queue be reset on idle?
+                ButtonState::Pressed => led.on_pressed.restart(),
+                ButtonState::Held => led.on_held.restart(),
+                ButtonState::Released => led.on_released.restart(),
+                ButtonState::Idle => led.on_idle.restart(),
+            };
+            led.counter = 0;
         }
     }
 

@@ -11,22 +11,10 @@ pub fn random_fades<I2C: I2c, SPI: SpiBus>(board: &mut Board<I2C, SPI>, small_rn
     for i in 0..16 {
         let timeout = small_rng.next_u32() as u16 as usize / 10;
         let colour = Colour::random(small_rng);
-        board.add_led_state(
-            i,
-            fade_out(0b11110000, colour.clone(), 500),
-            &ButtonState::Idle,
-        );
-        board.add_led_state(i, solid(0x00, colour.clone(), timeout), &ButtonState::Idle);
-        board.add_led_state(
-            i,
-            fade_in(0b11110000, colour.clone(), 500),
-            &ButtonState::Idle,
-        );
-        board.add_led_state(
-            i,
-            solid(0b11110000, colour.clone(), timeout),
-            &ButtonState::Idle,
-        );
+        board.add_led_state(i, fade_out(0b11110000, colour, 500), &ButtonState::Idle);
+        board.add_led_state(i, solid(0x00, colour, timeout), &ButtonState::Idle);
+        board.add_led_state(i, fade_in(0b11110000, colour, 500), &ButtonState::Idle);
+        board.add_led_state(i, solid(0b11110000, colour, timeout), &ButtonState::Idle);
 
         board.add_led_state(i, solid(0xff, colour.invert(), 100), &ButtonState::Held);
         board.add_led_state(i, fade_out(0xff, colour.invert(), 250), &ButtonState::Held);
@@ -45,33 +33,25 @@ pub fn loading_circle<I2C: I2c, SPI: SpiBus>(
     {
         board.add_led_state(
             i,
-            solid(0x00, colour.clone(), (idx + 1) * speed),
+            solid(0x00, colour, (idx + 1) * speed),
             &ButtonState::Idle,
         );
+        board.add_led_state(i, fade_in(0b11110000, colour, speed), &ButtonState::Idle);
         board.add_led_state(
             i,
-            fade_in(0b11110000, colour.clone(), speed),
-            &ButtonState::Idle,
-        );
-        board.add_led_state(
-            i,
-            solid(0b11110000, colour.clone(), (12 - idx) * speed),
+            solid(0b11110000, colour, (12 - idx) * speed),
             &ButtonState::Idle,
         );
 
         board.add_led_state(
             i,
-            solid(0b11110000, colour.clone(), (idx + 1) * speed),
+            solid(0b11110000, colour, (idx + 1) * speed),
             &ButtonState::Idle,
         );
+        board.add_led_state(i, fade_out(0b11110000, colour, speed), &ButtonState::Idle);
         board.add_led_state(
             i,
-            fade_out(0b11110000, colour.clone(), speed),
-            &ButtonState::Idle,
-        );
-        board.add_led_state(
-            i,
-            solid(0x0, colour.clone(), (12 - idx) * speed),
+            solid(0x0, colour, (12 - idx) * speed),
             &ButtonState::Idle,
         );
     }
@@ -84,12 +64,8 @@ pub fn breathing<I2C: I2c, SPI: SpiBus>(
     colour: Colour,
     speed: usize,
 ) {
-    board.add_led_state(
-        led_index,
-        fade_out(0b11110000, colour.clone(), speed),
-        state,
-    );
-    board.add_led_state(led_index, solid(0x00, colour.clone(), speed), state);
-    board.add_led_state(led_index, fade_in(0b11110000, colour.clone(), speed), state);
-    board.add_led_state(led_index, solid(0b11110000, colour.clone(), speed), state);
+    board.add_led_state(led_index, fade_out(0b11110000, colour, speed), state);
+    board.add_led_state(led_index, solid(0x00, colour, speed), state);
+    board.add_led_state(led_index, fade_in(0b11110000, colour, speed), state);
+    board.add_led_state(led_index, solid(0b11110000, colour, speed), state);
 }
