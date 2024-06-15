@@ -6,6 +6,7 @@ extern crate alloc;
 use defmt::*;
 use embassy_usb::class::cdc_acm::CdcAcmClass;
 use embassy_usb::driver::EndpointError;
+use heapless::Vec;
 use static_cell::StaticCell;
 
 use crate::board::Board;
@@ -127,7 +128,7 @@ pub async fn setup_usb_device(
         loop {
             serial_class.wait_connection().await;
             info!("Serial connected!");
-            let _ = echo(&mut serial_class).await;
+            let _ = serial_loop(&mut serial_class, board).await;
             info!("Serial disconnected!");
         }
     };
@@ -217,14 +218,113 @@ impl From<EndpointError> for Disconnected {
     }
 }
 
-async fn echo<'d, T: Instance + 'd>(
+async fn serial_loop<'d, T: Instance + 'd>(
     class: &mut CdcAcmClass<'d, Driver<'d, T>>,
+    board: &Mutex<
+        ThreadModeRawMutex,
+        RefCell<Board<I2c<'static, I2C0, i2c::Async>, Spi<'static, SPI0, spi::Async>>>,
+    >,
 ) -> Result<(), Disconnected> {
     let mut buf = [0; 64];
     loop {
-        let n = class.read_packet(&mut buf).await?;
-        let data = &buf[..n];
-        info!("Received: {:x}", data);
-        class.write_packet(data).await?;
+        let n = class.read_packet(&mut buf).await?; // Should be a sequence of commands/data followed by 0x00 <- end of stream
+        debug!("Received {} bytes", n);
+        if n > 0 {
+            match buf[0].try_into() {
+                Ok(command) => {
+                    info!("Received {}", command);
+                    match command {
+                        SerialProtocol::DisableKeyboardInput => {
+                            {
+                                board.lock().await.get_mut().disable_keyboard_input();
+                            }
+                            send_ack(class).await?;
+                        }
+                        SerialProtocol::EnableKeyboardInput => {
+                            {
+                                board.lock().await.get_mut().enable_keyboard_input();
+                            }
+                            send_ack(class).await?;
+                        }
+                        _ => send_nack(class).await?,
+                    }
+                }
+                Err(val) => {
+                    warn!("Unexpected command: 0x{:x}", val);
+                }
+            }
+        }
+    }
+}
+
+async fn send_ack<'d, T: Instance + 'd>(
+    class: &mut CdcAcmClass<'d, Driver<'d, T>>,
+) -> Result<(), EndpointError> {
+    class
+        .write_packet(&[SerialProtocol::Ack as u8, SerialProtocol::EndOfStream as u8])
+        .await
+}
+
+async fn send_nack<'d, T: Instance + 'd>(
+    class: &mut CdcAcmClass<'d, Driver<'d, T>>,
+) -> Result<(), EndpointError> {
+    class
+        .write_packet(&[
+            SerialProtocol::Nack as u8,
+            SerialProtocol::EndOfStream as u8,
+        ])
+        .await
+}
+
+#[derive(Format)]
+#[repr(u8)]
+pub enum SerialProtocol {
+    EndOfStream = 0x00,
+    // Sync commands
+    SyncRequest = 0x90,
+    SyncStart,
+    SyncEnd,
+    // Device related commands
+    DeviceReset = 0xa0,
+    DisableKeyboardInput,
+    EnableKeyboardInput,
+    // State related commands
+    AddState = 0xb0,
+    // Communication related commands
+    Ping = 0xfd,
+    Ack = 0xfe,
+    Nack = 0xff,
+}
+
+impl TryFrom<u8> for SerialProtocol {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0x00 => Ok(SerialProtocol::EndOfStream),
+            0x90 => Ok(SerialProtocol::SyncRequest),
+            0x91 => Ok(SerialProtocol::SyncStart),
+            0x92 => Ok(SerialProtocol::SyncEnd),
+            0xa0 => Ok(SerialProtocol::DeviceReset),
+            0xa1 => Ok(SerialProtocol::DisableKeyboardInput),
+            0xa2 => Ok(SerialProtocol::EnableKeyboardInput),
+            0xb0 => Ok(SerialProtocol::AddState),
+            0xfd => Ok(SerialProtocol::Ping),
+            0xfe => Ok(SerialProtocol::Ack),
+            0xff => Ok(SerialProtocol::Nack),
+            _ => Err(value),
+        }
+    }
+}
+
+impl SerialProtocol {
+    fn from_u8_buffer(slice: &[u8; 64]) -> Result<Vec<Self, 64>, u8> {
+        slice
+            .into_iter()
+            .map(|&item| {
+                let t = item.try_into();
+                t
+            })
+            .collect()
     }
 }
