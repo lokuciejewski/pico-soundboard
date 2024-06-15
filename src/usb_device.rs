@@ -251,6 +251,7 @@ async fn serial_loop<'d, T: Instance + 'd>(
                 }
                 Err(val) => {
                     warn!("Unexpected command: 0x{:x}", val);
+                    send_nack(class).await?
                 }
             }
         }
