@@ -21,7 +21,7 @@ use embassy_time::{Duration, Ticker};
 use embedded_alloc::Heap;
 use pico_soundboard::animations::{breathing, loading_circle, random_fades};
 use pico_soundboard::board::{Board, ButtonCallbackResult};
-use pico_soundboard::usb_keyboard::setup_usb_keyboard;
+use pico_soundboard::usb_device::setup_usb_device;
 use pico_soundboard::{ButtonState, Colour};
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
@@ -74,9 +74,9 @@ async fn main(_spawner: Spawner) {
     {
         let mut _board = board.lock().await;
         _board.get_mut().lock_led_states(&ButtonState::Idle);
-        loading_circle(&mut _board.borrow_mut(), Colour::rgb(0x50, 0x0, 0x50), 100);
+        loading_circle(&mut _board.get_mut(), Colour::rgb(0x50, 0x0, 0x50), 100);
         breathing(
-            &mut _board.borrow_mut(),
+            &mut _board.get_mut(),
             5,
             &ButtonState::Idle,
             Colour::rgb(0x0, 0x70, 0x10),
@@ -109,5 +109,5 @@ async fn main(_spawner: Spawner) {
     };
 
     // Run everything concurrently.
-    join(rgb_fut, setup_usb_keyboard(usb_driver, &board)).await;
+    join(rgb_fut, setup_usb_device(usb_driver, &board)).await;
 }

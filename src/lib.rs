@@ -7,7 +7,7 @@ pub mod animations;
 pub mod board;
 pub mod rgbleds;
 pub mod transitions;
-pub mod usb_keyboard;
+pub mod usb_device;
 
 #[derive(Clone)]
 pub struct Button {
