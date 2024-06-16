@@ -34,7 +34,11 @@ pub async fn setup_usb_device(
 ) {
     // Create embassy-usb Config
     let mut config = Config::new(0x1209, 0x2137);
-    config.device_class = 0x3;
+    // config.device_class = 0x3;
+    config.device_class = 0xef;
+    config.device_sub_class = 0x02;
+    config.device_protocol = 0x01;
+    config.composite_with_iads = true;
     config.manufacturer = Some("");
     config.product = Some("DnD Soundboard");
     config.serial_number = Some("00000001");
@@ -291,6 +295,8 @@ pub enum SerialProtocol {
     EnableKeyboardInput,
     // State related commands
     AddState = 0xb0,
+    RemoveState,
+    ClearStates,
     // Communication related commands
     Ping = 0xfd,
     Ack = 0xfe,
