@@ -4,7 +4,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 extern crate alloc;
 
 use crate::board::Board;
-use crate::serial_protocol::SerialMessage;
+use crate::serial_protocol::{ParseError, SerialMessage};
 use core::todo;
 use defmt::*;
 use embassy_futures::join::join4;
@@ -229,42 +229,52 @@ async fn serial_loop<'d, T: Instance + 'd>(
         RefCell<Board<I2c<'static, I2C0, i2c::Async>, Spi<'static, SPI0, spi::Async>>>,
     >,
 ) -> Result<(), Disconnected> {
-    let mut buf = [0; 40];
+    let mut buf = [0; 10];
     loop {
         let n = class.read_packet(&mut buf).await?;
         debug!("Received {} bytes: {:x}", n, buf[0..n]);
-        if n > 0 {
-            match TryInto::<SerialMessage>::try_into(&buf[0..10]) {
-                Ok(sm) => match sm.get_command() {
-                    crate::serial_protocol::SerialCommand::EndOfStream => todo!(),
-                    crate::serial_protocol::SerialCommand::ToBeContinued => todo!(),
-                    crate::serial_protocol::SerialCommand::SyncRequest => todo!(),
-                    crate::serial_protocol::SerialCommand::DeviceReset => todo!(),
-                    crate::serial_protocol::SerialCommand::DisableKeyboardInput => {
-                        board.lock().await.get_mut().disable_keyboard_input();
-                        send_message(class, SerialMessage::ack_to(&sm)).await?;
+        if n == 10 {
+            match TryInto::<SerialMessage>::try_into(buf.as_slice()) {
+                Ok(sm) => {
+                    info!("Received message: {}", sm);
+                    match sm.get_command() {
+                        crate::serial_protocol::SerialCommand::EndOfStream => todo!(),
+                        crate::serial_protocol::SerialCommand::ToBeContinued => todo!(),
+                        crate::serial_protocol::SerialCommand::SyncRequest => todo!(),
+                        crate::serial_protocol::SerialCommand::DeviceReset => todo!(),
+                        crate::serial_protocol::SerialCommand::DisableKeyboardInput => {
+                            board.lock().await.get_mut().disable_keyboard_input();
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
+                        }
+                        crate::serial_protocol::SerialCommand::EnableKeyboardInput => {
+                            board.lock().await.get_mut().enable_keyboard_input();
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
+                        }
+                        crate::serial_protocol::SerialCommand::AddState => todo!(),
+                        crate::serial_protocol::SerialCommand::RemoveState => todo!(),
+                        crate::serial_protocol::SerialCommand::ClearStates => todo!(),
+                        crate::serial_protocol::SerialCommand::NackGeneral => todo!(),
+                        crate::serial_protocol::SerialCommand::NackInvalidCommand => todo!(),
+                        crate::serial_protocol::SerialCommand::NackParseError => todo!(),
+                        crate::serial_protocol::SerialCommand::NackDeviceError => todo!(),
+                        crate::serial_protocol::SerialCommand::NackDeviceBusy => todo!(),
+                        crate::serial_protocol::SerialCommand::Reserved => todo!(),
+                        crate::serial_protocol::SerialCommand::Ping => todo!(),
+                        crate::serial_protocol::SerialCommand::Ack => todo!(),
                     }
-                    crate::serial_protocol::SerialCommand::EnableKeyboardInput => {
-                        board.lock().await.get_mut().enable_keyboard_input();
-                        send_message(class, SerialMessage::ack_to(&sm)).await?;
-                    }
-                    crate::serial_protocol::SerialCommand::AddState => todo!(),
-                    crate::serial_protocol::SerialCommand::RemoveState => todo!(),
-                    crate::serial_protocol::SerialCommand::ClearStates => todo!(),
-                    crate::serial_protocol::SerialCommand::NackGeneral => todo!(),
-                    crate::serial_protocol::SerialCommand::NackInvalidCommand => todo!(),
-                    crate::serial_protocol::SerialCommand::NackParseError => todo!(),
-                    crate::serial_protocol::SerialCommand::NackDeviceError => todo!(),
-                    crate::serial_protocol::SerialCommand::NackDeviceBusy => todo!(),
-                    crate::serial_protocol::SerialCommand::Reserved => todo!(),
-                    crate::serial_protocol::SerialCommand::Ping => todo!(),
-                    crate::serial_protocol::SerialCommand::Ack => todo!(),
-                },
+                }
                 Err(err) => {
                     error!("Failed to parse serial message: {}", err);
                     send_message(class, SerialMessage::nack_from_error(err)).await?
                 }
             }
+        } else {
+            error!("Failed to parse serial message - invalid length {}", n);
+            send_message(
+                class,
+                SerialMessage::nack_from_error(ParseError::InvalidMessageLength),
+            )
+            .await?
         }
     }
 }
