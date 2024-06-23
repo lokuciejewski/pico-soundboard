@@ -3,13 +3,10 @@ use core::panic;
 use core::sync::atomic::{AtomicBool, Ordering};
 extern crate alloc;
 
-use defmt::*;
-use embassy_usb::class::cdc_acm::CdcAcmClass;
-use embassy_usb::driver::EndpointError;
-use heapless::Vec;
-use static_cell::StaticCell;
-
 use crate::board::Board;
+use crate::serial_protocol::SerialMessage;
+use core::todo;
+use defmt::*;
 use embassy_futures::join::join4;
 use embassy_rp::i2c;
 use embassy_rp::i2c::I2c;
@@ -18,9 +15,12 @@ use embassy_rp::spi::{self, Spi};
 use embassy_rp::usb::{Driver, Instance};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
+use embassy_usb::class::cdc_acm::CdcAcmClass;
 use embassy_usb::class::hid::{HidReaderWriter, ReportId, RequestHandler};
 use embassy_usb::control::OutResponse;
+use embassy_usb::driver::EndpointError;
 use embassy_usb::{Config, Handler};
+use static_cell::StaticCell;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use {defmt_rtt as _, panic_probe as _};
@@ -229,109 +229,50 @@ async fn serial_loop<'d, T: Instance + 'd>(
         RefCell<Board<I2c<'static, I2C0, i2c::Async>, Spi<'static, SPI0, spi::Async>>>,
     >,
 ) -> Result<(), Disconnected> {
-    let mut buf = [0; 64];
+    let mut buf = [0; 40];
     loop {
-        let n = class.read_packet(&mut buf).await?; // Should be a sequence of commands/data followed by 0x00 <- end of stream
-        debug!("Received {} bytes", n);
+        let n = class.read_packet(&mut buf).await?;
+        debug!("Received {} bytes: {:x}", n, buf[0..n]);
         if n > 0 {
-            match buf[0].try_into() {
-                Ok(command) => {
-                    info!("Received {}", command);
-                    match command {
-                        SerialProtocol::DisableKeyboardInput => {
-                            {
-                                board.lock().await.get_mut().disable_keyboard_input();
-                            }
-                            send_ack(class).await?;
-                        }
-                        SerialProtocol::EnableKeyboardInput => {
-                            {
-                                board.lock().await.get_mut().enable_keyboard_input();
-                            }
-                            send_ack(class).await?;
-                        }
-                        _ => send_nack(class).await?,
+            match TryInto::<SerialMessage>::try_into(&buf[0..10]) {
+                Ok(sm) => match sm.get_command() {
+                    crate::serial_protocol::SerialCommand::EndOfStream => todo!(),
+                    crate::serial_protocol::SerialCommand::ToBeContinued => todo!(),
+                    crate::serial_protocol::SerialCommand::SyncRequest => todo!(),
+                    crate::serial_protocol::SerialCommand::DeviceReset => todo!(),
+                    crate::serial_protocol::SerialCommand::DisableKeyboardInput => {
+                        board.lock().await.get_mut().disable_keyboard_input();
+                        send_message(class, SerialMessage::ack_to(&sm)).await?;
                     }
-                }
-                Err(val) => {
-                    warn!("Unexpected command: 0x{:x}", val);
-                    send_nack(class).await?
+                    crate::serial_protocol::SerialCommand::EnableKeyboardInput => {
+                        board.lock().await.get_mut().enable_keyboard_input();
+                        send_message(class, SerialMessage::ack_to(&sm)).await?;
+                    }
+                    crate::serial_protocol::SerialCommand::AddState => todo!(),
+                    crate::serial_protocol::SerialCommand::RemoveState => todo!(),
+                    crate::serial_protocol::SerialCommand::ClearStates => todo!(),
+                    crate::serial_protocol::SerialCommand::NackGeneral => todo!(),
+                    crate::serial_protocol::SerialCommand::NackInvalidCommand => todo!(),
+                    crate::serial_protocol::SerialCommand::NackParseError => todo!(),
+                    crate::serial_protocol::SerialCommand::NackDeviceError => todo!(),
+                    crate::serial_protocol::SerialCommand::NackDeviceBusy => todo!(),
+                    crate::serial_protocol::SerialCommand::Reserved => todo!(),
+                    crate::serial_protocol::SerialCommand::Ping => todo!(),
+                    crate::serial_protocol::SerialCommand::Ack => todo!(),
+                },
+                Err(err) => {
+                    error!("Failed to parse serial message: {}", err);
+                    send_message(class, SerialMessage::nack_from_error(err)).await?
                 }
             }
         }
     }
 }
 
-async fn send_ack<'d, T: Instance + 'd>(
+async fn send_message<'d, T: Instance + 'd>(
     class: &mut CdcAcmClass<'d, Driver<'d, T>>,
+    message: SerialMessage,
 ) -> Result<(), EndpointError> {
-    class
-        .write_packet(&[SerialProtocol::Ack as u8, SerialProtocol::EndOfStream as u8])
-        .await
-}
-
-async fn send_nack<'d, T: Instance + 'd>(
-    class: &mut CdcAcmClass<'d, Driver<'d, T>>,
-) -> Result<(), EndpointError> {
-    class
-        .write_packet(&[
-            SerialProtocol::Nack as u8,
-            SerialProtocol::EndOfStream as u8,
-        ])
-        .await
-}
-
-#[derive(Format)]
-#[repr(u8)]
-pub enum SerialProtocol {
-    EndOfStream = 0x00,
-    // Sync commands
-    SyncRequest = 0x90,
-    SyncStart,
-    SyncEnd,
-    // Device related commands
-    DeviceReset = 0xa0,
-    DisableKeyboardInput,
-    EnableKeyboardInput,
-    // State related commands
-    AddState = 0xb0,
-    RemoveState,
-    ClearStates,
-    // Communication related commands
-    Ping = 0xfd,
-    Ack = 0xfe,
-    Nack = 0xff,
-}
-
-impl TryFrom<u8> for SerialProtocol {
-    type Error = u8;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            0x00 => Ok(SerialProtocol::EndOfStream),
-            0x90 => Ok(SerialProtocol::SyncRequest),
-            0x91 => Ok(SerialProtocol::SyncStart),
-            0x92 => Ok(SerialProtocol::SyncEnd),
-            0xa0 => Ok(SerialProtocol::DeviceReset),
-            0xa1 => Ok(SerialProtocol::DisableKeyboardInput),
-            0xa2 => Ok(SerialProtocol::EnableKeyboardInput),
-            0xb0 => Ok(SerialProtocol::AddState),
-            0xfd => Ok(SerialProtocol::Ping),
-            0xfe => Ok(SerialProtocol::Ack),
-            0xff => Ok(SerialProtocol::Nack),
-            _ => Err(value),
-        }
-    }
-}
-
-impl SerialProtocol {
-    fn from_u8_buffer(slice: &[u8; 64]) -> Result<Vec<Self, 64>, u8> {
-        slice
-            .into_iter()
-            .map(|&item| {
-                let t = item.try_into();
-                t
-            })
-            .collect()
-    }
+    let bytes = message.to_bytes();
+    class.write_packet(&bytes).await
 }

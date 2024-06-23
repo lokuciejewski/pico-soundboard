@@ -6,6 +6,7 @@ use rand::RngCore;
 pub mod animations;
 pub mod board;
 pub mod rgbleds;
+pub mod serial_protocol;
 pub mod transitions;
 pub mod usb_device;
 

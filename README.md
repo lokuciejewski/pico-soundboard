@@ -40,3 +40,56 @@ TODO
 
 ### Protocol proposal
 
+The protocol is a two-device, synchronous, based on request-response with a fixed-length message. Each message consists of 10 bytes (exact number may change).
+
+#### Message structure
+
+ The message structure is shown below (first byte is the leftmost one):
+
+```none
+                    MESSAGE
+[COMMAND BYTE] [8 BYTES OF DATA] [END BYTE]
+```
+
+Example request:
+
+```none
+            0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+PING command ^  |            8 bytes of data            | ^ END OF STREAM 
+```
+
+And the response:
+
+```none
+            0xFE 0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+ ACK command ^  | ^ argument to ACK: PING               | ^ EOS        
+```
+
+#### Timing rules
+
+The protocol is mostly timing-independent. The only crucial timings are message timeouts in case the `ACK`/`NACK` is not send.
+If the device does not receive a response (`ACK`/`NACK`) in **500ms**, it assumes the message was not read by the other device.
+
+Normal operation timings should be baudrate-dependent, the default being 9600 (to be confirmed).
+
+Any other timeout should also be **500ms** if not specified otherwise.
+
+#### Communication errors
+
+If the device receives less than 10 bytes in default communication timeout - **250ms** - it treats the message as incomplete and responds with the correct type of `NACK` (optionally including the first 7 bytes of message `DATA` section in message's `DATA`).
+
+Example:
+
+```none
+REQUEST:
+            0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 
+PING command ^  |              8 bytes of data?         |
+```
+
+```none
+RESPONSE:
+                                0xF2 0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00   
+NACK Communication Error command ^  |         8 bytes of data               | ^ END OF STREAM
+```
+
+#### Description of commands
