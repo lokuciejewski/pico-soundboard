@@ -241,7 +241,10 @@ async fn serial_loop<'d, T: Instance + 'd>(
                         crate::serial_protocol::SerialCommand::EndOfStream => todo!(),
                         crate::serial_protocol::SerialCommand::ToBeContinued => todo!(),
                         crate::serial_protocol::SerialCommand::SyncRequest => todo!(),
-                        crate::serial_protocol::SerialCommand::DeviceReset => todo!(),
+                        crate::serial_protocol::SerialCommand::DeviceReset => {
+                            info!("Resetting the device");
+                            cortex_m::peripheral::SCB::sys_reset()
+                        }
                         crate::serial_protocol::SerialCommand::DisableKeyboardInput => {
                             board.lock().await.get_mut().disable_keyboard_input();
                             send_message(class, SerialMessage::ack_to(&sm)).await?;
