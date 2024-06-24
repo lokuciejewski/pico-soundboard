@@ -143,3 +143,17 @@ pub enum ButtonState {
     Released,
     Idle,
 }
+
+impl TryFrom<u8> for ButtonState {
+    type Error = u8;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(ButtonState::Pressed),
+            1 => Ok(ButtonState::Held),
+            2 => Ok(ButtonState::Released),
+            3 => Ok(ButtonState::Idle),
+            _ => Err(value),
+        }
+    }
+}

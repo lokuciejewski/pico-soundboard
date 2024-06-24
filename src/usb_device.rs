@@ -4,7 +4,9 @@ use core::sync::atomic::{AtomicBool, Ordering};
 extern crate alloc;
 
 use crate::board::Board;
-use crate::serial_protocol::{ParseError, SerialMessage};
+use crate::serial_protocol::{NackType, ParseError, SerialCommand, SerialMessage};
+use crate::transitions::transition_function_try_from_bytes;
+use crate::ButtonState;
 use core::todo;
 use defmt::*;
 use embassy_futures::join::join4;
@@ -238,10 +240,16 @@ async fn serial_loop<'d, T: Instance + 'd>(
                 Ok(sm) => {
                     info!("Received message: {}", sm);
                     match sm.get_command() {
-                        crate::serial_protocol::SerialCommand::EndOfStream => todo!(),
-                        crate::serial_protocol::SerialCommand::ToBeContinued => todo!(),
+                        SerialCommand::EndOfStream | SerialCommand::ToBeContinued => {
+                            send_message(
+                                class,
+                                SerialMessage::nack_to_message(&sm, NackType::InvalidCommand),
+                            )
+                            .await?;
+                        }
                         crate::serial_protocol::SerialCommand::SyncRequest => todo!(),
                         crate::serial_protocol::SerialCommand::DeviceReset => {
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
                             info!("Resetting the device");
                             cortex_m::peripheral::SCB::sys_reset()
                         }
@@ -253,17 +261,86 @@ async fn serial_loop<'d, T: Instance + 'd>(
                             board.lock().await.get_mut().enable_keyboard_input();
                             send_message(class, SerialMessage::ack_to(&sm)).await?;
                         }
-                        crate::serial_protocol::SerialCommand::AddState => todo!(),
-                        crate::serial_protocol::SerialCommand::RemoveState => todo!(),
-                        crate::serial_protocol::SerialCommand::ClearStates => todo!(),
-                        crate::serial_protocol::SerialCommand::NackGeneral => todo!(),
-                        crate::serial_protocol::SerialCommand::NackInvalidCommand => todo!(),
-                        crate::serial_protocol::SerialCommand::NackParseError => todo!(),
-                        crate::serial_protocol::SerialCommand::NackDeviceError => todo!(),
-                        crate::serial_protocol::SerialCommand::NackDeviceBusy => todo!(),
-                        crate::serial_protocol::SerialCommand::Reserved => todo!(),
-                        crate::serial_protocol::SerialCommand::Ping => todo!(),
-                        crate::serial_protocol::SerialCommand::Ack => todo!(),
+                        SerialCommand::AddState => {
+                            let data = sm.get_data();
+                            let led_idx = 0b00001111 & data[0];
+                            let for_state = match ButtonState::try_from((data[0] >> 4) & 0b00001111)
+                            {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    error!("State {} is not valid as a ButtonState", e);
+                                    send_message(
+                                        class,
+                                        SerialMessage::nack_to_message(
+                                            &sm,
+                                            NackType::NackParseError,
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                            };
+                            let transition_function = match transition_function_try_from_bytes(
+                                &data[1..].try_into().unwrap(),
+                            ) {
+                                Ok(f) => f,
+                                Err(e) => {
+                                    error!("Invalid transition function: {}", e);
+                                    send_message(
+                                        class,
+                                        SerialMessage::nack_to_message(
+                                            &sm,
+                                            NackType::NackParseError,
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                            };
+                            board.lock().await.get_mut().add_led_state(
+                                led_idx as usize,
+                                transition_function,
+                                &for_state,
+                            );
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
+                        }
+                        SerialCommand::RemoveState => todo!(),
+                        SerialCommand::ClearStates => {
+                            let data = sm.get_data();
+                            let led_idx = 0b00001111 & data[0];
+                            let for_state = match ButtonState::try_from((data[0] >> 4) & 0b00001111)
+                            {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    error!("State {} is not valid as a ButtonState", e);
+                                    send_message(
+                                        class,
+                                        SerialMessage::nack_to_message(
+                                            &sm,
+                                            NackType::NackParseError,
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                            };
+                            board
+                                .lock()
+                                .await
+                                .get_mut()
+                                .clear_led_queue(led_idx as usize, &[&for_state]);
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
+                        }
+                        SerialCommand::NackGeneral => todo!(),
+                        SerialCommand::NackInvalidCommand => todo!(),
+                        SerialCommand::NackParseError => todo!(),
+                        SerialCommand::NackDeviceError => todo!(),
+                        SerialCommand::NackDeviceBusy => todo!(),
+                        SerialCommand::Reserved => todo!(),
+                        SerialCommand::Ping => {
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
+                        }
+                        SerialCommand::Ack => todo!(),
                     }
                 }
                 Err(err) => {

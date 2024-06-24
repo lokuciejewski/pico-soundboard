@@ -1,5 +1,4 @@
 use defmt::Format;
-use heapless::Vec;
 
 #[derive(Format)]
 pub struct SerialMessage {
@@ -88,6 +87,14 @@ impl SerialMessage {
     pub fn get_command(&self) -> &SerialCommand {
         &self.command
     }
+
+    pub fn get_data(&self) -> &[u8; 8] {
+        &self.data
+    }
+
+    pub fn get_end_byte(&self) -> &SerialCommand {
+        &self.end_byte
+    }
 }
 
 #[derive(Format)]
@@ -125,16 +132,12 @@ impl TryFrom<&[u8]> for SerialMessage {
     }
 }
 
-#[derive(Format)]
+#[derive(Format, Debug)]
 pub enum ParseError {
     InvalidCommand,
     InvalidData,
     InvalidEndByte,
     InvalidMessageLength,
-}
-
-pub trait ToSerialMessage {
-    fn to_serial_message(&self) -> SerialMessage;
 }
 
 #[derive(Format, Clone, Copy)]
