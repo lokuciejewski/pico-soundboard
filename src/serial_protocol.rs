@@ -134,10 +134,10 @@ impl TryFrom<&[u8]> for SerialMessage {
 
 #[derive(Format, Debug)]
 pub enum ParseError {
-    InvalidCommand,
-    InvalidData,
-    InvalidEndByte,
-    InvalidMessageLength,
+    InvalidCommand = 0x0,
+    InvalidData = 0x1,
+    InvalidEndByte = 0x2,
+    InvalidMessageLength = 0x3,
 }
 
 #[derive(Format, Clone, Copy)]

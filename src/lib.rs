@@ -138,10 +138,10 @@ impl Colour {
 
 #[derive(Format, PartialEq, Clone)]
 pub enum ButtonState {
-    Pressed,
-    Held,
-    Released,
-    Idle,
+    Pressed = 0x0,
+    Held = 0x1,
+    Released = 0x2,
+    Idle = 0x3,
 }
 
 impl TryFrom<u8> for ButtonState {

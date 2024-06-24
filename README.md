@@ -93,3 +93,146 @@ NACK Communication Error command ^  |         8 bytes of data               | ^ 
 ```
 
 #### Description of commands
+
+##### `ACK` - Acknowledge command
+
+- Command byte: `0xFF`
+- Data bytes: should contain first 8 bytes (command byte and 7 data bytes) of the message being acknowledged
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+##### `NACK - General`
+
+- Command byte: `0xF0`
+- Data bytes: should contain first 8 bytes (command byte and 7 data bytes) of the message being rejected
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+##### `NACK - InvalidCommand`
+
+##### `NACK - ParseError`
+
+- Command byte: `0xF2`
+- Data bytes: if the error ocurred **after** parsing the command, the first 8 bytes of the message being rejected are sent, otherwise:
+  - Byte 0: [ParseError](#parseerror) indicating why the command could not be parsed
+  - Bytes 1-7: ignored
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+##### `NACK - DeviceError`
+
+##### `NACK - DeviceBusy`
+
+##### `END OF STREAM`
+
+- Byte: `0x80`
+
+##### `AddState`
+
+Add a LedState (illumination state) to the chosen button when it is in the chosen [ButtonState](#buttonstate)
+
+- Command byte: `0xB0`
+- Data bytes:
+  - Byte 0: [ButtonState](#buttonstate) (high nibble) and Led Index (low nibble). Example: a value of `0x36` - `0b00110110` in binary is interpreted as `ButtonState::Idle` (0b0011) and Led Index 6 (0b0110).
+  - Byte 1: [TransitionFunction](#transitionfunction)
+  - Byte 2: Led Brightness - value is masked using `0b11100000`, so valid values are from `0` to `0b00011111`
+  - Bytes 3-5: [Colour](#colour) values for Red, Green and Blue respectively
+  - Bytes 6-7: Duration of the state in led ticks (currently ms), interpreted MSB first, for example to send a value of decimal `500`, two bytes `0x01` and `0xf4` should be sent (`0x1f4` == `500`)
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+Valid responses:
+
+- [ACK](#ack---acknowledge-command)
+- [NACK - ParseError](#nack---parseerror)
+
+##### `RemoveState`
+
+TODO
+
+##### `ClearStates`
+
+Clear all states for the chosen button from the chosen [ButtonState](#buttonstate)
+
+- Command byte: `0xB2`
+- Data bytes:
+  - Byte 0: [ButtonState](#buttonstate) (high nibble) and Led Index (low nibble). Example: a value of `0x36` - `0b00110110` in binary is interpreted as `ButtonState::Idle` (0b0011) and Led Index 6 (0b0110).
+  - Bytes 1-7: ignored
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+Valid responses:
+
+- [ACK](#ack---acknowledge-command)
+- [NACK - ParseError](#nack---parseerror)
+
+#### Translation of enums and struct to bytes
+
+##### SerialCommand
+
+```rust
+pub enum SerialCommand {
+    EndOfStream = 0x80,
+    ToBeContinued = 0x81,
+    // Sync commands
+    SyncRequest = 0x90,
+    // Device related commands
+    DeviceReset = 0xa0,
+    DisableKeyboardInput,
+    EnableKeyboardInput,
+    // State related commands
+    AddState = 0xb0,
+    RemoveState,
+    ClearStates,
+    // Communication related commands
+    // NACK types
+    NackGeneral = 0xf0,
+    NackInvalidCommand = 0xf1,
+    NackParseError = 0xf2,
+    NackDeviceError = 0xf3,
+    NackDeviceBusy = 0xf4,
+    // Reserved until 0xf9
+    Reserved = 0xf9,
+    Ping = 0xfe,
+    Ack = 0xff,
+}
+```
+
+##### ButtonState
+
+```rust
+pub enum ButtonState {
+    Pressed = 0x0,
+    Held = 0x1,
+    Released = 0x2,
+    Idle = 0x3,
+}
+```
+
+##### Colour
+
+```rust
+pub struct Colour {
+    red: u8,
+    green: u8,
+    blue: u8,
+}
+```
+
+When translating from bytes, the bytes are in the order of `red`, `green`, `blue`, unless stated otherwise.
+
+##### ParseError
+
+```rust
+pub enum ParseError {
+    InvalidCommand = 0x0,
+    InvalidData = 0x1,
+    InvalidEndByte = 0x2,
+    InvalidMessageLength = 0x3,
+}
+```
+
+##### TransitionFunction
+
+This is currently WIP, however as of now the translation is:
+
+```rust
+    solid = 0x0
+    fade_out = 0x1
+    fade_in = 0x2
+```
