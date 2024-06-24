@@ -134,7 +134,7 @@ Add a LedState (illumination state) to the chosen button when it is in the chose
   - Byte 1: [TransitionFunction](#transitionfunction)
   - Byte 2: Led Brightness - value is masked using `0b11100000`, so valid values are from `0` to `0b00011111`
   - Bytes 3-5: [Colour](#colour) values for Red, Green and Blue respectively
-  - Bytes 6-7: Duration of the state in led ticks (currently ms), interpreted MSB first, for example to send a value of decimal `500`, two bytes `0x01` and `0xf4` should be sent (`0x1f4` == `500`)
+  - Bytes 6-7: Duration of the state in led ticks (currently ms), interpreted MSB first, for example to send a value of decimal `500`, two bytes `0x01` and `0xf4` should be sent (`0x1f4` == `500`). If set to `0x0000`, the state will persist indefinitely.
 - End byte: [`END OF STREAM`](#end-of-stream)
 
 Valid responses:
