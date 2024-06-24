@@ -40,7 +40,7 @@ TODO
 
 ### Protocol proposal
 
-The protocol is a two-device, synchronous, based on request-response with a fixed-length message. Each message consists of 10 bytes (exact number may change).
+The protocol is a two-device, synchronous, based on request-response with a fixed-length message. Each message consists of 10 bytes.
 
 #### Message structure
 
@@ -54,14 +54,14 @@ The protocol is a two-device, synchronous, based on request-response with a fixe
 Example request:
 
 ```none
-            0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+            0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x80
 PING command ^  |            8 bytes of data            | ^ END OF STREAM 
 ```
 
 And the response:
 
 ```none
-            0xFE 0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00
+            0xFE 0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x80
  ACK command ^  | ^ argument to ACK: PING               | ^ EOS        
 ```
 
@@ -88,8 +88,8 @@ PING command ^  |              8 bytes of data?         |
 
 ```none
 RESPONSE:
-                                0xF2 0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x00   
-NACK Communication Error command ^  |         8 bytes of data               | ^ END OF STREAM
+                       0xF2 0xFD 0x00 0x00 0x00 0x00 0x00 0x00 0x00 0x80   
+NACK ParseError command ^  |         8 bytes of data               | ^ END OF STREAM
 ```
 
 #### Description of commands
