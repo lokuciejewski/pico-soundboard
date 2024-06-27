@@ -149,8 +149,12 @@ pub enum SerialCommand {
     SyncRequest = 0x90,
     // Device related commands
     DeviceReset = 0xa0,
-    DisableKeyboardInput,
-    EnableKeyboardInput,
+    DisableKeyboardInput = 0xa1,
+    EnableKeyboardInput = 0xa2,
+    LockButtonState = 0xa3,
+    LockAllButtonStates = 0xa4,
+    UnlockButtonState = 0xa5,
+    UnlockAllButtonStates = 0xa6,
     // State related commands
     AddState = 0xb0,
     RemoveState,

@@ -247,19 +247,77 @@ async fn serial_loop<'d, T: Instance + 'd>(
                             )
                             .await?;
                         }
-                        crate::serial_protocol::SerialCommand::SyncRequest => todo!(),
-                        crate::serial_protocol::SerialCommand::DeviceReset => {
+                        SerialCommand::SyncRequest => todo!(),
+                        SerialCommand::DeviceReset => {
                             send_message(class, SerialMessage::ack_to(&sm)).await?;
                             info!("Resetting the device");
                             cortex_m::peripheral::SCB::sys_reset()
                         }
-                        crate::serial_protocol::SerialCommand::DisableKeyboardInput => {
+                        SerialCommand::DisableKeyboardInput => {
                             board.lock().await.get_mut().disable_keyboard_input();
                             send_message(class, SerialMessage::ack_to(&sm)).await?;
                         }
-                        crate::serial_protocol::SerialCommand::EnableKeyboardInput => {
+                        SerialCommand::EnableKeyboardInput => {
                             board.lock().await.get_mut().enable_keyboard_input();
                             send_message(class, SerialMessage::ack_to(&sm)).await?;
+                        }
+                        SerialCommand::LockButtonState => {
+                            let data = sm.get_data();
+                            let led_idx = 0b00001111 & data[0];
+                            let to_state = match ButtonState::try_from((data[0] >> 4) & 0b00001111)
+                            {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    error!("State {} is not valid as a ButtonState", e);
+                                    send_message(
+                                        class,
+                                        SerialMessage::nack_to_message(
+                                            &sm,
+                                            NackType::NackParseError,
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                            };
+                            board
+                                .lock()
+                                .await
+                                .get_mut()
+                                .lock_led_state(led_idx as usize, &to_state);
+                        }
+                        SerialCommand::LockAllButtonStates => {
+                            let data = sm.get_data();
+                            let to_state = match ButtonState::try_from((data[0] >> 4) & 0b00001111)
+                            {
+                                Ok(s) => s,
+                                Err(e) => {
+                                    error!("State {} is not valid as a ButtonState", e);
+                                    send_message(
+                                        class,
+                                        SerialMessage::nack_to_message(
+                                            &sm,
+                                            NackType::NackParseError,
+                                        ),
+                                    )
+                                    .await?;
+                                    continue;
+                                }
+                            };
+                            board.lock().await.get_mut().lock_led_states(&to_state);
+                        }
+                        SerialCommand::UnlockButtonState => {
+                            let data = sm.get_data();
+                            let led_idx = 0b00001111 & data[0];
+
+                            board
+                                .lock()
+                                .await
+                                .get_mut()
+                                .unlock_led_state(led_idx as usize);
+                        }
+                        SerialCommand::UnlockAllButtonStates => {
+                            board.lock().await.get_mut().unlock_led_states();
                         }
                         SerialCommand::AddState => {
                             let data = sm.get_data();

@@ -161,6 +161,44 @@ Valid responses:
 - [ACK](#ack---acknowledge-command)
 - [NACK - ParseError](#nack---parseerror)
 
+##### `LockButtonState`
+
+Lock a led state queue to the one of [`ButtonState`](#buttonstate) regardless of the actual state of the button. For example, if the state is locked to `ButtonState::Idle`, the the led won't change illumination if the button is pressed (even if the queue for `ButtonState::Held` is not empty).
+
+- Command byte: `0xA3`
+- Data bytes:
+  - Byte 0: [ButtonState](#buttonstate) (high nibble) and Led Index (low nibble). Example: a value of `0x36` - `0b00110110` in binary is interpreted as `ButtonState::Idle` (0b0011) and Led Index 6 (0b0110).
+  - Bytes 1-7: ignored
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+##### `LockAllButtonStates`
+
+Lock all button states to the chosen [`ButtonState`](#buttonstate).
+
+- Command byte: `0xA4`
+- Data bytes:
+  - Byte 0: [ButtonState](#buttonstate) (high nibble). Example: a value of `0x30` - `0b00110000` in binary is interpreted as `ButtonState::Idle` (0b0011)
+  - Bytes 1-7: ignored
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+##### `UnlockButtonState`
+
+Unlock the state for the chosen button.
+
+- Command byte: `0xA5`
+- Data bytes:
+  - Byte 0: Led Index (low nibble).
+  - Bytes 1-7: ignored
+- End byte: [`END OF STREAM`](#end-of-stream)
+
+##### `UnlockAllButtonStates`
+
+Unlock the state for all buttons.
+
+- Command byte: `0xA6`
+- Data bytes: ignored
+- End byte: [`END OF STREAM`](#end-of-stream)
+
 #### Translation of enums and struct to bytes
 
 ##### SerialCommand
@@ -173,8 +211,12 @@ pub enum SerialCommand {
     SyncRequest = 0x90,
     // Device related commands
     DeviceReset = 0xa0,
-    DisableKeyboardInput,
-    EnableKeyboardInput,
+    DisableKeyboardInput = 0xa1,
+    EnableKeyboardInput = 0xa2,
+    LockButtonState = 0xa3,
+    LockAllButtonStates = 0xa4,
+    UnlockButtonState = 0xa5,
+    UnlockAllButtonStates = 0xa6,
     // State related commands
     AddState = 0xb0,
     RemoveState,

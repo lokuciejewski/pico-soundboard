@@ -97,10 +97,18 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
         }
     }
 
+    pub fn lock_led_state(&mut self, led_idx: usize, state: &ButtonState) {
+        self.rgb_leds.lock_led_state(led_idx, state);
+    }
+
     pub fn unlock_led_states(&mut self) {
         for i in 0..16 {
             self.rgb_leds.unlock_led_state(i);
         }
+    }
+
+    pub fn unlock_led_state(&mut self, led_idx: usize) {
+        self.rgb_leds.unlock_led_state(led_idx);
     }
 
     pub fn clear_led_queues(&mut self, index: usize) {
