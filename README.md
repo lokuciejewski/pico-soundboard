@@ -164,7 +164,10 @@ Clear all states for the chosen button from the chosen [ButtonState](#buttonstat
 
 - Command byte: `0xB2`
 - Data bytes:
-  - Byte 0: [ButtonState](#buttonstate) (high nibble) and Led Index (low nibble). Example: a value of `0x36` - `0b00110110` in binary is interpreted as `ButtonState::Idle` (0b0011) and Led Index 6 (0b0110).
+  - Byte 0:
+  - Bit 7 (highest): [ButtonState](#buttonstate)
+  - Bits 6-4: ignored
+  - Bits 3-0: Led/Button index
   - Bytes 1-7: ignored
 - End byte: [`END OF STREAM`](#end-of-stream)
 

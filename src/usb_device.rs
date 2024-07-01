@@ -356,22 +356,7 @@ async fn serial_loop<'d, T: Instance + 'd>(
                         SerialCommand::ClearStates => {
                             let data = sm.get_data();
                             let led_idx = 0b00001111 & data[0];
-                            let for_state = match ButtonState::try_from((data[0] >> 4) & 0b00001111)
-                            {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    error!("State {} is not valid as a ButtonState", e);
-                                    send_message(
-                                        class,
-                                        SerialMessage::nack_to_message(
-                                            &sm,
-                                            NackType::NackParseError,
-                                        ),
-                                    )
-                                    .await?;
-                                    continue;
-                                }
-                            };
+                            let for_state = ButtonState::try_from(data[0] >> 7).unwrap();
                             board
                                 .lock()
                                 .await
