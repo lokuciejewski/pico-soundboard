@@ -341,7 +341,18 @@ async fn serial_loop<'d, T: Instance + 'd>(
                             );
                             send_message(class, SerialMessage::ack_to(&sm)).await?;
                         }
-                        SerialCommand::RemoveState => todo!(),
+                        SerialCommand::RemoveState => {
+                            let data = sm.get_data();
+                            let led_idx = 0b00001111 & data[0];
+                            let state_idx = data[1] >> 4;
+                            let for_state = ButtonState::try_from(data[0] >> 7).unwrap();
+                            board.lock().await.get_mut().remove_led_state(
+                                led_idx as usize,
+                                state_idx as usize,
+                                &for_state,
+                            );
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
+                        }
                         SerialCommand::ClearStates => {
                             let data = sm.get_data();
                             let led_idx = 0b00001111 & data[0];

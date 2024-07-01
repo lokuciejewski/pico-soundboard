@@ -89,6 +89,10 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
             .add_state(led_idx, state_idx, transition, for_state);
     }
 
+    pub fn remove_led_state(&mut self, led_idx: usize, state_idx: usize, for_state: &ButtonState) {
+        self.rgb_leds.remove_state(led_idx, state_idx, for_state);
+    }
+
     pub async fn refresh_leds(&mut self) {
         self.rgb_leds.refresh().await;
     }

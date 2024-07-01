@@ -147,7 +147,16 @@ Valid responses:
 
 ##### `RemoveState`
 
-TODO
+Remove a LedState on the chosen button from the chosen [ButtonState](#buttonstate)
+
+- Command byte: `0xB1`
+- Data bytes:
+  - Byte 0:
+  - Bit 7 (highest): [ButtonState](#buttonstate)
+  - Bits 6-4: ignored
+  - Bits 3-0: Led/Button index
+- Bytes 1-7: ignored
+- End byte: [`END_OF_STREAM`](#end-of-stream)
 
 ##### `ClearStates`
 
