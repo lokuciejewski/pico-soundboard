@@ -81,10 +81,12 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
     pub fn add_led_state(
         &mut self,
         led_idx: usize,
+        state_idx: usize,
         transition: TransitionFunction,
         for_state: &ButtonState,
     ) {
-        self.rgb_leds.add_state(led_idx, transition, for_state);
+        self.rgb_leds
+            .add_state(led_idx, state_idx, transition, for_state);
     }
 
     pub async fn refresh_leds(&mut self) {
@@ -112,15 +114,8 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
     }
 
     pub fn clear_led_queues(&mut self, index: usize) {
-        self.rgb_leds.clear(
-            index,
-            &[
-                &ButtonState::Held,
-                &ButtonState::Idle,
-                &ButtonState::Pressed,
-                &ButtonState::Released,
-            ],
-        );
+        self.rgb_leds
+            .clear(index, &[&ButtonState::Idle, &ButtonState::Pressed]);
     }
 
     pub fn clear_led_queue(&mut self, index: usize, states: &[&ButtonState]) {
@@ -147,8 +142,10 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                             if self.keyboard_input_enabled {
                                 pressed_buffer[i] = self.buttons[i].rgb_led_index + 4;
                             }
-                            self.rgb_leds
-                                .set_button_state(map_idx_from_button_to_led(i), ButtonState::Held);
+                            self.rgb_leds.set_button_state(
+                                map_idx_from_button_to_led(i),
+                                ButtonState::Pressed,
+                            );
                         }
                         (true, false) => {
                             // Was not pressed before but is pressed now, call the callback
@@ -173,10 +170,8 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                         }
                         (false, true) => {
                             // Button was pressed but now is released, call the released callback
-                            self.rgb_leds.set_button_state(
-                                map_idx_from_button_to_led(i),
-                                ButtonState::Released,
-                            );
+                            self.rgb_leds
+                                .set_button_state(map_idx_from_button_to_led(i), ButtonState::Idle);
                             self.buttons[i].pressed = false;
                             let callback = self.callbacks_released.get_mut(i).unwrap().take();
                             if callback.is_some() {

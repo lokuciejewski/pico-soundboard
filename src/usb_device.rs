@@ -114,6 +114,7 @@ pub async fn setup_usb_device(
                 .into_iter()
                 .filter(|&k| k != 0)
                 .enumerate()
+                .take(6)
                 .for_each(|(idx, k)| keycodes[idx] = k);
 
             let report = KeyboardReport {
@@ -322,41 +323,19 @@ async fn serial_loop<'d, T: Instance + 'd>(
                         SerialCommand::AddState => {
                             let data = sm.get_data();
                             let led_idx = 0b00001111 & data[0];
-                            let for_state = match ButtonState::try_from((data[0] >> 4) & 0b00001111)
+                            let transition_function = match transition_function_try_from_bytes(data)
                             {
-                                Ok(s) => s,
-                                Err(e) => {
-                                    error!("State {} is not valid as a ButtonState", e);
-                                    send_message(
-                                        class,
-                                        SerialMessage::nack_to_message(
-                                            &sm,
-                                            NackType::NackParseError,
-                                        ),
-                                    )
-                                    .await?;
-                                    continue;
-                                }
-                            };
-                            let transition_function = match transition_function_try_from_bytes(
-                                &data[1..].try_into().unwrap(),
-                            ) {
                                 Ok(f) => f,
                                 Err(e) => {
-                                    error!("Invalid transition function: {}", e);
-                                    send_message(
-                                        class,
-                                        SerialMessage::nack_to_message(
-                                            &sm,
-                                            NackType::NackParseError,
-                                        ),
-                                    )
-                                    .await?;
+                                    send_message(class, SerialMessage::nack_from_error(e)).await?;
                                     continue;
                                 }
                             };
+                            let for_state = ButtonState::try_from(data[0] >> 7).unwrap();
+                            let state_idx = data[1] >> 4;
                             board.lock().await.get_mut().add_led_state(
                                 led_idx as usize,
+                                state_idx as usize,
                                 transition_function,
                                 &for_state,
                             );

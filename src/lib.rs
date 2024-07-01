@@ -97,13 +97,6 @@ impl TryFrom<u32> for ButtonCode {
 }
 
 #[derive(Clone, Copy)]
-pub enum Illumination {
-    Steady(Colour),
-    Blinking(Colour, u16),
-    Rainbow(u16),
-}
-
-#[derive(Clone, Copy)]
 pub struct Colour {
     red: u8,
     green: u8,
@@ -136,12 +129,10 @@ impl Colour {
     }
 }
 
-#[derive(Format, PartialEq, Clone)]
+#[derive(Format, PartialEq, Clone, Copy, Debug)]
 pub enum ButtonState {
-    Pressed = 0x0,
-    Held = 0x1,
-    Released = 0x2,
-    Idle = 0x3,
+    Idle = 0x0,
+    Pressed = 0x1,
 }
 
 impl TryFrom<u8> for ButtonState {
@@ -149,10 +140,8 @@ impl TryFrom<u8> for ButtonState {
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
         match value {
-            0 => Ok(ButtonState::Pressed),
-            1 => Ok(ButtonState::Held),
-            2 => Ok(ButtonState::Released),
-            3 => Ok(ButtonState::Idle),
+            0 => Ok(ButtonState::Idle),
+            1 => Ok(ButtonState::Pressed),
             _ => Err(value),
         }
     }

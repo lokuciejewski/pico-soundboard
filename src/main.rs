@@ -30,7 +30,7 @@ use {defmt_rtt as _, panic_probe as _};
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 use core::mem::MaybeUninit;
-const HEAP_SIZE: usize = 1024;
+const HEAP_SIZE: usize = 8192;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
 bind_interrupts!(struct Irqs {
@@ -70,6 +70,7 @@ async fn main(_spawner: Spawner) {
 
     // RefCell needed for mutable access
     let board: Mutex<ThreadModeRawMutex, _> = Mutex::new(RefCell::new(Board::new(i2c, spi).await));
+    info!("Board initialised!");
 
     {
         let mut _board = board.lock().await;

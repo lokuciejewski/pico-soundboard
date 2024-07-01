@@ -11,14 +11,44 @@ pub fn random_fades<I2C: I2c, SPI: SpiBus>(board: &mut Board<I2C, SPI>, small_rn
     for i in 0..16 {
         let timeout = small_rng.next_u32() as u16 as usize / 10;
         let colour = Colour::random(small_rng);
-        board.add_led_state(i, fade_out(0b11110000, colour, 500), &ButtonState::Idle);
-        board.add_led_state(i, solid(0x00, colour, timeout), &ButtonState::Idle);
-        board.add_led_state(i, fade_in(0b11110000, colour, 500), &ButtonState::Idle);
-        board.add_led_state(i, solid(0b11110000, colour, timeout), &ButtonState::Idle);
+        board.add_led_state(
+            i,
+            0,
+            fade_out(0b11110000, colour, 500, 1),
+            &ButtonState::Idle,
+        );
+        board.add_led_state(i, 1, solid(0x00, colour, timeout, 2), &ButtonState::Idle);
+        board.add_led_state(
+            i,
+            2,
+            fade_in(0b11110000, colour, 500, 3),
+            &ButtonState::Idle,
+        );
+        board.add_led_state(
+            i,
+            3,
+            solid(0b11110000, colour, timeout, 0),
+            &ButtonState::Idle,
+        );
 
-        board.add_led_state(i, solid(0xff, colour.invert(), 100), &ButtonState::Held);
-        board.add_led_state(i, fade_out(0xff, colour.invert(), 250), &ButtonState::Held);
-        board.add_led_state(i, solid(0x00, colour.invert(), 0), &ButtonState::Held);
+        board.add_led_state(
+            i,
+            0,
+            solid(0xff, colour.invert(), 100, 1),
+            &ButtonState::Pressed,
+        );
+        board.add_led_state(
+            i,
+            1,
+            fade_out(0xff, colour.invert(), 250, 2),
+            &ButtonState::Pressed,
+        );
+        board.add_led_state(
+            i,
+            2,
+            solid(0x00, colour.invert(), 0, 0),
+            &ButtonState::Pressed,
+        );
     }
 }
 
@@ -33,25 +63,39 @@ pub fn loading_circle<I2C: I2c, SPI: SpiBus>(
     {
         board.add_led_state(
             i,
-            solid(0x00, colour, (idx + 1) * speed),
+            0,
+            solid(0x00, colour, (idx + 1) * speed, 1),
             &ButtonState::Idle,
         );
-        board.add_led_state(i, fade_in(0b11110000, colour, speed), &ButtonState::Idle);
         board.add_led_state(
             i,
-            solid(0b11110000, colour, (12 - idx) * speed),
+            1,
+            fade_in(0b11110000, colour, speed, 2),
+            &ButtonState::Idle,
+        );
+        board.add_led_state(
+            i,
+            2,
+            solid(0b11110000, colour, (12 - idx) * speed, 3),
             &ButtonState::Idle,
         );
 
         board.add_led_state(
             i,
-            solid(0b11110000, colour, (idx + 1) * speed),
+            3,
+            solid(0b11110000, colour, (idx + 1) * speed, 4),
             &ButtonState::Idle,
         );
-        board.add_led_state(i, fade_out(0b11110000, colour, speed), &ButtonState::Idle);
         board.add_led_state(
             i,
-            solid(0x0, colour, (12 - idx) * speed),
+            4,
+            fade_out(0b11110000, colour, speed, 5),
+            &ButtonState::Idle,
+        );
+        board.add_led_state(
+            i,
+            5,
+            solid(0x0, colour, (12 - idx) * speed, 0),
             &ButtonState::Idle,
         );
     }
@@ -64,8 +108,8 @@ pub fn breathing<I2C: I2c, SPI: SpiBus>(
     colour: Colour,
     speed: usize,
 ) {
-    board.add_led_state(led_index, fade_out(0b11110000, colour, speed), state);
-    board.add_led_state(led_index, solid(0x00, colour, speed), state);
-    board.add_led_state(led_index, fade_in(0b11110000, colour, speed), state);
-    board.add_led_state(led_index, solid(0b11110000, colour, speed), state);
+    board.add_led_state(led_index, 0, fade_out(0b11110000, colour, speed, 1), state);
+    board.add_led_state(led_index, 1, solid(0x00, colour, speed, 2), state);
+    board.add_led_state(led_index, 2, fade_in(0b11110000, colour, speed, 3), state);
+    board.add_led_state(led_index, 3, solid(0b11110000, colour, speed, 0), state);
 }

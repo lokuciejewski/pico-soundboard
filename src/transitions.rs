@@ -7,7 +7,7 @@ use alloc::boxed::Box;
 pub(crate) type TransitionFunction = Box<dyn Fn(usize) -> TransitionResult>;
 
 pub fn transition_function_try_from_bytes(
-    bytes: &[u8; 7],
+    bytes: &[u8; 8],
 ) -> Result<TransitionFunction, ParseError> {
     // Function[0] Brightness[1] Colour[2, 3, 4] Duration[5, 6]
     let function = match bytes[0] {
@@ -17,19 +17,30 @@ pub fn transition_function_try_from_bytes(
         _ => return Err(ParseError::InvalidData),
     };
 
+    let next_state = bytes[1] & 0b00001111;
     let brightness = bytes[1];
     let colour = Colour::rgb(bytes[2], bytes[3], bytes[4]);
     let duration_ticks = (bytes[5] as usize) << 8 | bytes[6] as usize;
-    Ok(function(brightness, colour, duration_ticks))
+    Ok(function(
+        brightness,
+        colour,
+        duration_ticks,
+        next_state as usize,
+    ))
 }
 
-pub fn solid(brightness: u8, colour: Colour, duration_ticks: usize) -> TransitionFunction {
+pub fn solid(
+    brightness: u8,
+    colour: Colour,
+    duration_ticks: usize,
+    transition_index: TransitionIndex,
+) -> TransitionFunction {
     if duration_ticks != 0 {
         Box::new(move |counter: usize| {
             if counter < duration_ticks {
                 TransitionResult::InProgress(LedState::new(brightness, &colour))
             } else {
-                TransitionResult::Finished
+                TransitionResult::Finished(transition_index)
             }
         })
     } else {
@@ -41,6 +52,7 @@ pub fn fade_out(
     initial_brightness: u8,
     colour: Colour,
     duration_ticks: usize,
+    transition_index: TransitionIndex,
 ) -> TransitionFunction {
     Box::new(move |counter: usize| {
         if counter < duration_ticks {
@@ -50,12 +62,17 @@ pub fn fade_out(
                 &colour,
             ))
         } else {
-            TransitionResult::Finished
+            TransitionResult::Finished(transition_index)
         }
     })
 }
 
-pub fn fade_in(target_brightness: u8, colour: Colour, duration_ticks: usize) -> TransitionFunction {
+pub fn fade_in(
+    target_brightness: u8,
+    colour: Colour,
+    duration_ticks: usize,
+    transition_index: TransitionIndex,
+) -> TransitionFunction {
     Box::new(move |counter: usize| {
         if counter < duration_ticks {
             TransitionResult::InProgress(LedState::new(
@@ -63,12 +80,14 @@ pub fn fade_in(target_brightness: u8, colour: Colour, duration_ticks: usize) -> 
                 &colour,
             ))
         } else {
-            TransitionResult::Finished
+            TransitionResult::Finished(transition_index)
         }
     })
 }
 
+pub type TransitionIndex = usize;
+
 pub enum TransitionResult {
     InProgress(LedState),
-    Finished,
+    Finished(TransitionIndex),
 }
