@@ -260,10 +260,6 @@ impl LedStateQueue {
         self.current_element = 0;
     }
 
-    pub fn len(&self) -> usize {
-        self.queue.len()
-    }
-
     pub fn clear(&mut self) {
         self.queue = Vec::new();
         self.current_element = 0;

@@ -144,7 +144,8 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                         (true, true) => {
                             // Was pressed before and is still pressed
                             if self.keyboard_input_enabled {
-                                pressed_buffer[i] = self.buttons[i].rgb_led_index + 4;
+                                pressed_buffer[i] =
+                                    map_led_idx_to_key_code(self.buttons[i].rgb_led_index);
                             }
                             self.rgb_leds.set_button_state(
                                 map_idx_from_button_to_led(i),
@@ -154,7 +155,8 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                         (true, false) => {
                             // Was not pressed before but is pressed now, call the callback
                             if self.keyboard_input_enabled {
-                                pressed_buffer[i] = self.buttons[i].rgb_led_index + 4;
+                                pressed_buffer[i] =
+                                    map_led_idx_to_key_code(self.buttons[i].rgb_led_index);
                             }
                             self.rgb_leds.set_button_state(
                                 map_idx_from_button_to_led(i),
@@ -206,4 +208,8 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
 
 fn map_idx_from_button_to_led(button_idx: usize) -> usize {
     (button_idx + 8) % 16
+}
+
+fn map_led_idx_to_key_code(led_idx: u8) -> u8 {
+    led_idx + 4
 }

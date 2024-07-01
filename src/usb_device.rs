@@ -27,13 +27,12 @@ use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
 use {defmt_rtt as _, panic_probe as _};
 
-pub async fn setup_usb_device(
-    driver: Driver<'static, USB>,
-    board: &Mutex<
-        ThreadModeRawMutex,
-        RefCell<Board<I2c<'static, I2C0, i2c::Async>, Spi<'static, SPI0, spi::Async>>>,
-    >,
-) {
+type MutexedBoard = Mutex<
+    ThreadModeRawMutex,
+    RefCell<Board<I2c<'static, I2C0, i2c::Async>, Spi<'static, SPI0, spi::Async>>>,
+>;
+
+pub async fn setup_usb_device(driver: Driver<'static, USB>, board: &MutexedBoard) {
     // Create embassy-usb Config
     let mut config = Config::new(0x1209, 0x2137);
     // config.device_class = 0x3;
@@ -99,15 +98,7 @@ pub async fn setup_usb_device(
 
     let in_fut = async {
         loop {
-            let key_states = {
-                board
-                    .lock()
-                    .await
-                    .borrow_mut()
-                    .update_status()
-                    .await
-                    .unwrap()
-            };
+            let key_states = { board.lock().await.get_mut().update_status().await.unwrap() };
             let mut keycodes = [0u8; 6];
 
             key_states
@@ -120,7 +111,11 @@ pub async fn setup_usb_device(
             let report = KeyboardReport {
                 keycodes,
                 leds: 0,
-                modifier: 0,
+                modifier: if keycodes == [0; 6] {
+                    0
+                } else {
+                    KeyboardModifiers::LeftShift as u8 | KeyboardModifiers::LeftCtrl as u8
+                },
                 reserved: 0,
             };
             // Send the report.
@@ -145,6 +140,20 @@ pub async fn setup_usb_device(
     };
 
     join4(in_fut, out_fut, usb_fut, serial_loop).await;
+}
+
+#[allow(dead_code)]
+#[repr(u8)]
+enum KeyboardModifiers {
+    None,
+    LeftCtrl,
+    LeftShift,
+    LeftAlt,
+    LeftGui,
+    RightCtrl,
+    RightShift,
+    RightAlt,
+    RightGui,
 }
 
 struct MyRequestHandler {}
@@ -227,10 +236,7 @@ impl From<EndpointError> for Disconnected {
 
 async fn serial_loop<'d, T: Instance + 'd>(
     class: &mut CdcAcmClass<'d, Driver<'d, T>>,
-    board: &Mutex<
-        ThreadModeRawMutex,
-        RefCell<Board<I2c<'static, I2C0, i2c::Async>, Spi<'static, SPI0, spi::Async>>>,
-    >,
+    board: &MutexedBoard,
 ) -> Result<(), Disconnected> {
     let mut buf = [0; 10];
     loop {

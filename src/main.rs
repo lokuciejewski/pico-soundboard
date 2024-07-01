@@ -16,6 +16,7 @@ use embassy_rp::usb::Driver;
 use embassy_rp::{bind_interrupts, i2c};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 
+use core::mem::MaybeUninit;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Ticker};
 use embedded_alloc::Heap;
@@ -29,7 +30,6 @@ use {defmt_rtt as _, panic_probe as _};
 
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
-use core::mem::MaybeUninit;
 const HEAP_SIZE: usize = 8192;
 static mut HEAP_MEM: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
 
