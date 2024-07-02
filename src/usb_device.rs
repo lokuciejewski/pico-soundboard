@@ -339,6 +339,10 @@ async fn serial_loop<'d, T: Instance + 'd>(
                             };
                             let for_state = ButtonState::try_from(data[0] >> 7).unwrap();
                             let state_idx = data[1] >> 4;
+                            info!(
+                                "Added state for led {}: for_state: {}, state index: {}",
+                                led_idx, for_state, state_idx
+                            );
                             board.lock().await.get_mut().add_led_state(
                                 led_idx as usize,
                                 state_idx as usize,
@@ -403,5 +407,6 @@ async fn send_message<'d, T: Instance + 'd>(
     message: SerialMessage,
 ) -> Result<(), EndpointError> {
     let bytes = message.to_bytes();
+    info!("Sending message: {}", message);
     class.write_packet(&bytes).await
 }

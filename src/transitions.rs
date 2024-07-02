@@ -9,8 +9,7 @@ pub(crate) type TransitionFunction = Box<dyn Fn(usize) -> TransitionResult>;
 pub fn transition_function_try_from_bytes(
     bytes: &[u8; 8],
 ) -> Result<TransitionFunction, ParseError> {
-    // Function[0] Brightness[1] Colour[2, 3, 4] Duration[5, 6]
-    let function = match bytes[0] {
+    let function = match (bytes[0] >> 4) & 0b0111 {
         0 => solid,
         1 => fade_out,
         2 => fade_in,
