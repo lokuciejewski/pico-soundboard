@@ -15,17 +15,17 @@ use embassy_rp::spi::{self, Phase, Polarity, Spi};
 use embassy_rp::usb::Driver;
 use embassy_rp::{bind_interrupts, i2c};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
+use pico_soundboard::rgbleds::LedState;
+use pico_soundboard::transitions::TransitionResult;
 
 use core::mem::MaybeUninit;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Ticker};
 use embedded_alloc::Heap;
-use pico_soundboard::animations::{breathing, loading_circle, random_fades};
+use pico_soundboard::animations::{breathing, loading_circle};
 use pico_soundboard::board::{Board, ButtonCallbackResult};
 use pico_soundboard::usb_device::setup_usb_device;
 use pico_soundboard::{ButtonState, Colour};
-use rand::rngs::SmallRng;
-use rand::SeedableRng;
 use {defmt_rtt as _, panic_probe as _};
 
 #[global_allocator]
@@ -88,9 +88,15 @@ async fn main(_spawner: Spawner) {
             Some(Box::new(|board| -> ButtonCallbackResult {
                 for i in 0..16 {
                     board.clear_led_queues(i);
+                    board.add_led_state(
+                        i,
+                        0,
+                        Box::new(|_| {
+                            TransitionResult::InProgress(LedState::new(0x0, &Colour::rgb(0, 0, 0)))
+                        }),
+                        &ButtonState::Idle,
+                    )
                 }
-                let mut small_rng = SmallRng::seed_from_u64(69);
-                random_fades(board, &mut small_rng);
                 board.unlock_led_states();
                 board.enable_keyboard_input();
                 ButtonCallbackResult::Remove
