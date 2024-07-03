@@ -277,11 +277,13 @@ async fn serial_loop<'d, T: Instance + 'd>(
                                 .await
                                 .get_mut()
                                 .lock_led_state(led_idx as usize, &to_state);
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
                         }
                         SerialCommand::LockAllButtonStates => {
                             let data = sm.get_data();
                             let to_state = ButtonState::try_from(data[0] >> 7).unwrap();
                             board.lock().await.get_mut().lock_led_states(&to_state);
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
                         }
                         SerialCommand::UnlockButtonState => {
                             let data = sm.get_data();
@@ -292,9 +294,11 @@ async fn serial_loop<'d, T: Instance + 'd>(
                                 .await
                                 .get_mut()
                                 .unlock_led_state(led_idx as usize);
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
                         }
                         SerialCommand::UnlockAllButtonStates => {
                             board.lock().await.get_mut().unlock_led_states();
+                            send_message(class, SerialMessage::ack_to(&sm)).await?;
                         }
                         SerialCommand::AddState => {
                             let data = sm.get_data();
