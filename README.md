@@ -182,7 +182,10 @@ Lock a led state queue to the one of [`ButtonState`](#buttonstate) regardless of
 
 - Command byte: `0xA3`
 - Data bytes:
-  - Byte 0: [ButtonState](#buttonstate) (high nibble) and Led Index (low nibble). Example: a value of `0x36` - `0b00110110` in binary is interpreted as `ButtonState::Idle` (0b0011) and Led Index 6 (0b0110).
+  - Byte 0:
+    - Bit 7 (highest): [ButtonState](#buttonstate)
+    - Bits 6-4: ignored
+    - Bits 3-0: Led/Button index
   - Bytes 1-7: ignored
 - End byte: [`END OF STREAM`](#end-of-stream)
 
@@ -192,7 +195,8 @@ Lock all button states to the chosen [`ButtonState`](#buttonstate).
 
 - Command byte: `0xA4`
 - Data bytes:
-  - Byte 0: [ButtonState](#buttonstate) (high nibble). Example: a value of `0x30` - `0b00110000` in binary is interpreted as `ButtonState::Idle` (0b0011)
+  - Byte 0:
+    - Bit 7 (highest): [ButtonState](#buttonstate)
   - Bytes 1-7: ignored
 - End byte: [`END OF STREAM`](#end-of-stream)
 
