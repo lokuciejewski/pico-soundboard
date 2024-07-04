@@ -56,7 +56,7 @@ pub fn fade_out(
     Box::new(move |counter: usize| {
         if counter < duration_ticks {
             TransitionResult::InProgress(LedState::new(
-                initial_brightness
+                (initial_brightness & 0b00011111)
                     - (counter * (initial_brightness & 0b00011111) as usize / duration_ticks) as u8,
                 &colour,
             ))
