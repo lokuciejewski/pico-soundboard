@@ -136,7 +136,7 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
 
         let mut pressed_buffer = [0u8; 16];
 
-        for i in 0..16 {
+        for (i, item) in pressed_buffer.iter_mut().enumerate() {
             match ButtonCode::try_from(1 << i) {
                 Ok(_btn) => {
                     let pressed_now = ((states >> i) & 0b1) == 0b1;
@@ -144,8 +144,7 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                         (true, true) => {
                             // Was pressed before and is still pressed
                             if self.keyboard_input_enabled {
-                                pressed_buffer[i] =
-                                    map_led_idx_to_key_code(self.buttons[i].rgb_led_index);
+                                *item = map_led_idx_to_key_code(self.buttons[i].rgb_led_index);
                             }
                             self.rgb_leds.set_button_state(
                                 map_idx_from_button_to_led(i),
@@ -155,8 +154,7 @@ impl<I2C: I2c, SPI: SpiBus> Board<I2C, SPI> {
                         (true, false) => {
                             // Was not pressed before but is pressed now, call the callback
                             if self.keyboard_input_enabled {
-                                pressed_buffer[i] =
-                                    map_led_idx_to_key_code(self.buttons[i].rgb_led_index);
+                                *item = map_led_idx_to_key_code(self.buttons[i].rgb_led_index);
                             }
                             self.rgb_leds.set_button_state(
                                 map_idx_from_button_to_led(i),

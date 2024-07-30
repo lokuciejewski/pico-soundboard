@@ -64,16 +64,16 @@ pub async fn setup_usb_device(driver: Driver<'static, USB>, board: &MutexedBoard
     };
 
     let mut request_handler = MyRequestHandler {};
-    static DEVICE_HANDLER: StaticCell<MyDeviceHandler> = StaticCell::new();
+    static DEVICE_HANDLER: StaticCell<DeviceHandler> = StaticCell::new();
     static HID_STATE: StaticCell<embassy_usb::class::hid::State> = StaticCell::new();
 
-    builder.handler(DEVICE_HANDLER.init(MyDeviceHandler::new()));
+    builder.handler(DEVICE_HANDLER.init(DeviceHandler::new()));
 
     // Create classes on the builder.
     let config = embassy_usb::class::hid::Config {
         report_descriptor: KeyboardReport::desc(),
         request_handler: None,
-        poll_ms: 60,
+        poll_ms: 30,
         max_packet_size: 64,
     };
 
@@ -179,19 +179,19 @@ impl RequestHandler for MyRequestHandler {
     }
 }
 
-struct MyDeviceHandler {
+struct DeviceHandler {
     configured: AtomicBool,
 }
 
-impl MyDeviceHandler {
+impl DeviceHandler {
     fn new() -> Self {
-        MyDeviceHandler {
+        DeviceHandler {
             configured: AtomicBool::new(false),
         }
     }
 }
 
-impl Handler for MyDeviceHandler {
+impl Handler for DeviceHandler {
     fn enabled(&mut self, enabled: bool) {
         self.configured.store(false, Ordering::Relaxed);
         if enabled {

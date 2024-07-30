@@ -17,7 +17,7 @@ pub fn transition_function_try_from_bytes(
     };
 
     let next_state = bytes[1] & 0b00001111;
-    let brightness = bytes[1];
+    let brightness = bytes[2];
     let colour = Colour::rgb(bytes[3], bytes[4], bytes[5]);
     let duration_ticks = (bytes[6] as usize) << 8 | bytes[7] as usize;
     Ok(function(
