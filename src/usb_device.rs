@@ -3,7 +3,6 @@ use core::panic;
 use core::sync::atomic::{AtomicBool, Ordering};
 extern crate alloc;
 
-use crate::animations::{breathing, loading_circle};
 use crate::board::Board;
 use crate::serial_protocol::{NackType, ParseError, SerialCommand, SerialMessage};
 use crate::transitions::{solid, transition_function_try_from_bytes};

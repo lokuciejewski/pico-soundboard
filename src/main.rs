@@ -4,7 +4,6 @@
 use core::cell::RefCell;
 extern crate alloc;
 
-use alloc::boxed::Box;
 use defmt::*;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
@@ -15,15 +14,13 @@ use embassy_rp::spi::{self, Phase, Polarity, Spi};
 use embassy_rp::usb::Driver;
 use embassy_rp::{bind_interrupts, i2c};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
-use pico_soundboard::rgbleds::LedState;
-use pico_soundboard::transitions::TransitionResult;
 
 use core::mem::MaybeUninit;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Ticker};
 use embedded_alloc::Heap;
-use pico_soundboard::animations::{breathing, loading_circle};
-use pico_soundboard::board::{Board, ButtonCallbackResult};
+use pico_soundboard::animations::loading_circle;
+use pico_soundboard::board::Board;
 use pico_soundboard::usb_device::setup_usb_device;
 use pico_soundboard::{ButtonState, Colour};
 use {defmt_rtt as _, panic_probe as _};
