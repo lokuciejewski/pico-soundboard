@@ -168,7 +168,10 @@ impl RGBLed {
     }
 
     pub fn clear(&mut self, from_states: &[&ButtonState]) {
-        for state in from_states {
+        for &state in from_states {
+            if *state == self.button_state {
+                self.counter = 0;
+            }
             match state {
                 ButtonState::Pressed => self.on_pressed.clear(),
                 ButtonState::Idle => self.on_idle.clear(),

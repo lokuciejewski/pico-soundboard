@@ -76,32 +76,7 @@ async fn main(_spawner: Spawner) {
         let mut _board = board.lock().await;
         _board.get_mut().lock_led_states(&ButtonState::Idle);
         loading_circle(&mut _board.get_mut(), Colour::rgb(0x50, 0x0, 0x50), 100);
-        breathing(
-            &mut _board.get_mut(),
-            5,
-            &ButtonState::Idle,
-            Colour::rgb(0x0, 0x70, 0x10),
-            500,
-        );
-        _board.get_mut().add_callback_pressed(
-            5,
-            Some(Box::new(|board| -> ButtonCallbackResult {
-                for i in 0..16 {
-                    board.clear_led_queues(i);
-                    board.add_led_state(
-                        i,
-                        0,
-                        Box::new(|_| {
-                            TransitionResult::InProgress(LedState::new(0x0, &Colour::rgb(0, 0, 0)))
-                        }),
-                        &ButtonState::Idle,
-                    )
-                }
-                board.unlock_led_states();
-                board.enable_keyboard_input();
-                ButtonCallbackResult::Remove
-            })),
-        )
+        // Await serial connection to proceed
     }
 
     // This is needed so that led refresh rate is independent of USB poll rate

@@ -3,10 +3,11 @@ use core::panic;
 use core::sync::atomic::{AtomicBool, Ordering};
 extern crate alloc;
 
+use crate::animations::{breathing, loading_circle};
 use crate::board::Board;
 use crate::serial_protocol::{NackType, ParseError, SerialCommand, SerialMessage};
-use crate::transitions::transition_function_try_from_bytes;
-use crate::ButtonState;
+use crate::transitions::{solid, transition_function_try_from_bytes};
+use crate::{ButtonState, Colour};
 use core::todo;
 use defmt::*;
 use embassy_futures::join::join4;
@@ -130,6 +131,19 @@ pub async fn setup_usb_device(driver: Driver<'static, USB>, board: &MutexedBoard
         loop {
             serial_class.wait_connection().await;
             info!("Serial connected!");
+            {
+                let mut _board = board.lock().await;
+                _board.get_mut().unlock_led_states();
+                _board.get_mut().enable_keyboard_input();
+                (0..16).for_each(|led| {
+                    _board.get_mut().add_led_state(
+                        led,
+                        0,
+                        solid(0x00, Colour::white(), 0, 0),
+                        &ButtonState::Idle,
+                    );
+                });
+            }
             let _ = serial_loop(&mut serial_class, board).await;
             info!("Serial disconnected!");
         }
